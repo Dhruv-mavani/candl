@@ -29,6 +29,12 @@ export function NFTDetail() {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (tradeType === "sell") {
+      setInputMode("Shares");
+    }
+  }, [tradeType]);
+
   // Drawing tools state
   const [activeTool, setActiveTool] = useState<string>("crosshair");
   const [priceScaleMode, setPriceScaleMode] = useState<"normal" | "log" | "percentage">("normal");
@@ -490,21 +496,25 @@ export function NFTDetail() {
             <div className="space-y-4">
               <div>
                 <div className="flex justify-between items-center mb-1.5">
-                  <label className="text-xs text-slate-400 dark:text-slate-500 block">Amount to {tradeType === "buy" ? "Buy" : "Sell"}</label>
-                  <div className="flex bg-slate-100 dark:bg-white/5 rounded-lg p-0.5">
-                    {["Shares", "USD", "SOL"].map(mode => (
-                      <button 
-                        key={mode}
-                        onClick={() => {
-                          setInputMode(mode as "Shares" | "USD" | "SOL");
-                          setInputValue(""); 
-                        }}
-                        className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-all ${inputMode === mode ? "bg-white dark:bg-white/10 shadow-sm text-slate-800 dark:text-white" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
-                      >
-                        {mode}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="text-xs text-slate-400 dark:text-slate-500 block">
+                    {tradeType === "buy" ? "Amount to Buy" : "Shares to Sell"}
+                  </label>
+                  {tradeType === "buy" && (
+                    <div className="flex bg-slate-100 dark:bg-white/5 rounded-lg p-0.5">
+                      {["Shares", "USD", "SOL"].map(mode => (
+                        <button 
+                          key={mode}
+                          onClick={() => {
+                            setInputMode(mode as "Shares" | "USD" | "SOL");
+                            setInputValue(""); 
+                          }}
+                          className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-all ${inputMode === mode ? "bg-white dark:bg-white/10 shadow-sm text-slate-800 dark:text-white" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="relative">
                   <input
