@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, TrendingUp, TrendingDown, DollarSign, BarChart3, Share2, Activity,
-  Crosshair, TrendingUp as TrendLineIcon, Minus, Type, Smile, Ruler, ZoomIn, Magnet, Pencil, BarChart2, Droplets } from "lucide-react";
+  Crosshair, TrendingUp as TrendLineIcon, Minus, Type, Smile, Ruler, ZoomIn, Magnet, Pencil, BarChart2, Droplets, ChevronUp, ChevronDown } from "lucide-react";
 import { nftData, generateCandlestickHistory, CandleData } from "@/lib/mockData";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, CrosshairMode, LineStyle, PriceScaleMode } from "lightweight-charts";
 
@@ -273,6 +273,19 @@ export function NFTDetail() {
     calculatedShares = calculatedUSD / nft.currentPrice;
   }
 
+  const handleIncrement = () => {
+    const current = parseFloat(inputValue) || 0;
+    const step = inputMode === "Shares" ? 1 : (inputMode === "USD" ? 10 : 0.1);
+    setInputValue((current + step).toString());
+  };
+
+  const handleDecrement = () => {
+    const current = parseFloat(inputValue) || 0;
+    const step = inputMode === "Shares" ? 1 : (inputMode === "USD" ? 10 : 0.1);
+    const next = Math.max(0, current - step);
+    setInputValue(next.toString());
+  };
+
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
       <Link href="/marketplace">
@@ -516,16 +529,32 @@ export function NFTDetail() {
                     </div>
                   )}
                 </div>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <input
                     type="number"
                     placeholder="0.00"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
-                    className={`w-full h-12 pl-4 pr-16 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                    className={`w-full h-12 pl-4 pr-24 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                   />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400 pointer-events-none">
-                    {inputMode}
+                  <div className="absolute right-2 flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-400 pointer-events-none">
+                      {inputMode}
+                    </span>
+                    <div className="flex flex-col border-l border-slate-200 dark:border-white/10 pl-2">
+                      <button 
+                        onClick={handleIncrement}
+                        className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={handleDecrement}
+                        className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-1.5 mt-2">
