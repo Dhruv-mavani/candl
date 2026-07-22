@@ -236,7 +236,7 @@ export function NFTDetail() {
 
   if (!nft) {
     return (
-      <div className="container mx-auto px-4 py-16 text-center">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-16 text-center">
         <h2 className="text-2xl font-bold mb-4">NFT not found</h2>
         <Link href="/marketplace">
           <button className="px-5 py-2.5 rounded-xl bg-emerald-500 text-white font-medium">Back to Marketplace</button>
@@ -249,7 +249,7 @@ export function NFTDetail() {
   const totalCost = (sharesNum * nft.currentPrice).toFixed(2);
 
   return (
-    <div className="container mx-auto px-4 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
       <Link href="/marketplace">
         <button className="flex items-center gap-1.5 mb-6 text-sm text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
           <ArrowLeft className="w-4 h-4" />

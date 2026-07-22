@@ -100,7 +100,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           isNavVisible ? "translate-y-0" : "-translate-y-full"
         }`}
       >
-        <div className="container mx-auto">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <div
             className="mt-3 flex items-center justify-between h-14 px-5 rounded-2xl
               bg-white/50 dark:bg-white/[0.06]
@@ -142,6 +142,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               >
                 {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
               </button>
+
+              {connected && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <Button variant="outline" size="sm" className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5">
+                    Create NFT
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5">
+                    Import NFT
+                  </Button>
+                </div>
+              )}
 
               <div className="wallet-adapter-container">
                 <WalletMultiButton className="candl-wallet-btn" style={{ 
@@ -192,7 +203,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* 1. Hero CTA & Contact Block */}
-        <div className="relative container mx-auto px-4 pt-24 pb-16 border-b border-emerald-200/50 dark:border-white/10">
+        <div className="relative w-full px-4 sm:px-6 lg:px-8 pt-24 pb-16 border-b border-emerald-200/50 dark:border-white/10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-8 items-center">
             {/* Left: Massive CTA */}
             <div className="space-y-6">
@@ -272,7 +283,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* 3. Link Grid */}
-        <div className="container mx-auto px-4 py-16">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-16">
           <div className="flex flex-wrap justify-between md:justify-evenly w-full max-w-5xl mx-auto gap-12 md:gap-24">
               <div>
                 <h4 className="text-xs font-bold tracking-wider text-emerald-600 dark:text-emerald-400 mb-6 uppercase">Platform</h4>

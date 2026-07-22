@@ -82,7 +82,7 @@ export function Home() {
   return (
     <div className="pb-24 md:pb-0 text-slate-800 dark:text-slate-100">
       {/* ── Hero ── */}
-      <section className="container mx-auto px-4 pt-16 pb-12 relative">
+      <section className="w-full px-4 pt-16 pb-12 relative">
         
         {/* Floating Mock NFTs (Background Decorative) */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden hidden md:block">
@@ -179,7 +179,7 @@ export function Home() {
       </section>
 
       {/* ── Top Gainers ── */}
-      <section className="container mx-auto px-4 py-12">
+      <section className="w-full px-4 py-12">
         <div className="flex items-center justify-between mb-7">
           <div>
             <h2 className="text-2xl font-bold mb-1">🔥 Top Gainers</h2>
@@ -235,7 +235,7 @@ export function Home() {
       </section>
 
       {/* ── Features ── */}
-      <section className="container mx-auto px-4 py-16">
+      <section className="w-full px-4 py-16">
         <div className="text-center mb-14">
           <h2 className="text-3xl md:text-4xl font-extrabold mb-4 h-[40px] md:h-[48px] flex items-center justify-center">
             <Typewriter words={["Why Choose Candl?", "Why Trade NFT Shares?", "Why Fractional Ownership?"]} />
@@ -251,7 +251,7 @@ export function Home() {
       </section>
 
       {/* ── Two-Sided Market Router ── */}
-      <section className="container mx-auto px-4 py-16">
+      <section className="w-full px-4 py-16">
         
         {/* The Split Router */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto mb-8">

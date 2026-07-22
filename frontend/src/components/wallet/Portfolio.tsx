@@ -31,7 +31,7 @@ export function Portfolio() {
   const miniChart = Array.from({ length: 7 }, () => ({ value: totalValue * (0.95 + Math.random() * 0.1) }));
 
   return (
-    <div className="container mx-auto px-4 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-1">My Portfolio</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">Track your NFT share investments</p>
