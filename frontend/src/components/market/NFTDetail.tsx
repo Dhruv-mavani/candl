@@ -525,7 +525,7 @@ export function NFTDetail() {
 
               <div className="bg-sky-50/80 dark:bg-sky-400/[0.07] border border-sky-200/60 dark:border-sky-400/15 rounded-xl p-3">
                 <p className="text-xs text-sky-700 dark:text-sky-300">
-                  💡 <strong>Tip:</strong> Trading fees are 0.5% per transaction. Connect your wallet to start trading.
+                  💡 <strong>Tip:</strong> Trading fees are 1.25% per transaction (0.95% to Protocol, 0.30% to Creator). Connect your wallet to start trading.
                 </p>
               </div>
             </div>

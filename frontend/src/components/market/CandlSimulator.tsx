@@ -120,10 +120,11 @@ export function CandlSimulator() {
     const newShares = shares + amount;
     const newPrice = newShares * k;
     const cost = ((shares + newShares) / 2) * amount * k; 
-    const royaltyFee = cost * 0.01; 
+    const protocolFee = cost * 0.0095;
+    const royaltyFee = cost * 0.0030;
     
     setShares(newShares);
-    setSolReserve(prev => prev + (cost - royaltyFee));
+    setSolReserve(prev => prev + cost); // Reserve is never reduced by fees
     setRoyalties(prev => prev + royaltyFee);
     
     const candle = generateCandle(oldPrice, newPrice, true);
@@ -138,10 +139,11 @@ export function CandlSimulator() {
     const newShares = shares - amount;
     const newPrice = newShares * k || 0.1;
     const revenue = ((shares + newShares) / 2) * amount * k; 
-    const royaltyFee = revenue * 0.01; 
+    const protocolFee = revenue * 0.0095;
+    const royaltyFee = revenue * 0.0030;
     
     setShares(newShares);
-    setSolReserve(prev => Math.max(0, prev - revenue));
+    setSolReserve(prev => Math.max(0, prev - revenue)); // Reserve decreases by full revenue
     setRoyalties(prev => prev + royaltyFee);
     
     const candle = generateCandle(oldPrice, newPrice, false);
