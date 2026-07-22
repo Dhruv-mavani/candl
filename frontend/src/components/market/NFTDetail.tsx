@@ -522,9 +522,9 @@ export function NFTDetail() {
                     placeholder="0.00"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
-                    className={`w-full h-12 pl-4 pr-16 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600`}
+                    className={`w-full h-12 pl-4 pr-16 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                   />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400 pointer-events-none">
                     {inputMode}
                   </div>
                 </div>
