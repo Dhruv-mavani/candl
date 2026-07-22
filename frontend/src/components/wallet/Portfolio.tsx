@@ -100,52 +100,72 @@ export function Portfolio() {
 
       {/* Holdings */}
       {tab === "holdings" && (
-        <div className="space-y-4">
-          {holdings.map((holding) => {
-            const nft = nftData.find((n) => n.id === holding.nftId);
-            if (!nft) return null;
-            const currentValue = nft.currentPrice * holding.shares;
-            const costBasis = holding.avgPrice * holding.shares;
-            const pl = currentValue - costBasis;
-            const plPct = (pl / costBasis) * 100;
+        <div className={`rounded-2xl overflow-hidden ${glass}`}>
+          {/* Table Header (Desktop Only) */}
+          <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-black/5 dark:border-white/5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-black/5 dark:bg-white/[0.02]">
+            <div className="col-span-4">Asset</div>
+            <div className="col-span-2 text-right">Price</div>
+            <div className="col-span-2 text-right">Balance</div>
+            <div className="col-span-2 text-right">Value / Cost</div>
+            <div className="col-span-2 text-right">P&L</div>
+          </div>
+          
+          <div className="flex flex-col">
+            {holdings.map((holding) => {
+              const nft = nftData.find((n) => n.id === holding.nftId);
+              if (!nft) return null;
+              const currentValue = nft.currentPrice * holding.shares;
+              const costBasis = holding.avgPrice * holding.shares;
+              const pl = currentValue - costBasis;
+              const plPct = (pl / costBasis) * 100;
 
-            return (
-              <Link key={holding.nftId} href={`/market/${nft.id}`}>
-                <div className={`rounded-2xl p-5 transition-all hover:shadow-[0_12px_40px_rgba(16,185,129,0.14)] cursor-pointer ${glass}`}>
-                  <div className="flex flex-col md:flex-row gap-5">
-                    <div className="flex gap-4 flex-1 items-center">
-                      <img src={nft.image} alt={nft.name} className="w-16 h-16 rounded-xl object-cover shrink-0" />
+              return (
+                <Link key={holding.nftId} href={`/market/${nft.id}`}>
+                  <div className="grid grid-cols-2 md:grid-cols-12 gap-y-4 md:gap-4 items-center p-4 border-b border-black/5 dark:border-white/5 last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.04] transition-colors">
+                    {/* Asset */}
+                    <div className="col-span-2 md:col-span-4 flex items-center gap-3">
+                      <img src={nft.image} alt={nft.name} className="w-11 h-11 rounded-lg object-cover shrink-0 shadow-sm" />
                       <div>
-                        <div className="text-xs text-slate-400 dark:text-slate-500">{nft.collection}</div>
-                        <div className="font-semibold">{nft.name}</div>
-                        <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                          {holding.shares} shares @ ${holding.avgPrice} avg
-                        </div>
+                        <div className="font-semibold text-sm">{nft.name}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{nft.collection}</div>
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
-                      {[
-                        { label: "Current Price", value: `$${nft.currentPrice}`, color: "" },
-                        { label: "Total Value", value: `$${currentValue.toFixed(2)}`, color: "text-amber-500 dark:text-amber-400" },
-                        { label: "Cost Basis", value: `$${costBasis.toFixed(2)}`, color: "" },
-                        {
-                          label: "P&L",
-                          value: `${pl >= 0 ? "+" : ""}$${pl.toFixed(2)} (${plPct.toFixed(1)}%)`,
-                          color: pl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500",
-                        },
-                      ].map(({ label, value, color }) => (
-                        <div key={label} className={`p-3 ${inset}`}>
-                          <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{label}</div>
-                          <div className={`text-sm font-semibold ${color}`}>{value}</div>
-                        </div>
-                      ))}
+                    
+                    {/* Price */}
+                    <div className="col-span-1 md:col-span-2 md:text-right">
+                      <div className="text-[11px] font-medium text-slate-400 md:hidden mb-0.5 uppercase tracking-wide">Price</div>
+                      <div className="font-medium text-sm">${nft.currentPrice.toFixed(2)}</div>
+                    </div>
+                    
+                    {/* Balance */}
+                    <div className="col-span-1 md:col-span-2 text-right">
+                      <div className="text-[11px] font-medium text-slate-400 md:hidden mb-0.5 uppercase tracking-wide">Balance</div>
+                      <div className="font-medium text-sm">{holding.shares} shares</div>
+                      <div className="text-[11px] text-slate-500">@ ${holding.avgPrice} avg</div>
+                    </div>
+                    
+                    {/* Value / Cost */}
+                    <div className="col-span-1 md:col-span-2 md:text-right">
+                      <div className="text-[11px] font-medium text-slate-400 md:hidden mb-0.5 uppercase tracking-wide">Value / Cost</div>
+                      <div className="font-semibold text-sm text-amber-500 dark:text-amber-400">${currentValue.toFixed(2)}</div>
+                      <div className="text-[11px] text-slate-500">${costBasis.toFixed(2)} cost</div>
+                    </div>
+                    
+                    {/* P&L */}
+                    <div className="col-span-1 md:col-span-2 text-right">
+                      <div className="text-[11px] font-medium text-slate-400 md:hidden mb-0.5 uppercase tracking-wide">P&L</div>
+                      <div className={`font-semibold text-sm ${pl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                        {pl >= 0 ? "+" : ""}${pl.toFixed(2)}
+                      </div>
+                      <div className={`text-[11px] ${pl >= 0 ? "text-emerald-500/80" : "text-rose-500/80"}`}>
+                        {plPct >= 0 ? "+" : ""}{plPct.toFixed(1)}%
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            );
-          })}
+                </Link>
+              );
+            })}
+          </div>
         </div>
       )}
 
