@@ -216,17 +216,50 @@ export function Portfolio() {
         </div>
       )}
 
-      {/* CTA */}
-      <div className={`rounded-3xl p-8 text-center mt-8 relative overflow-hidden ${glass}`}>
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/8 via-transparent to-amber-400/8 rounded-3xl" />
-        <h3 className="relative font-bold text-lg mb-3">Ready to expand your portfolio?</h3>
-        <Link href="/marketplace">
-          <button className="relative px-6 py-2.5 rounded-xl font-semibold text-sm
-            bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600
-            text-white shadow-md shadow-emerald-400/25 transition-all active:scale-95">
-            Browse NFTs
-          </button>
-        </Link>
+      {/* Trending Markets */}
+      <div className="mt-12">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 dark:text-emerald-400">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <h3 className="font-bold text-lg">Trending Markets</h3>
+          </div>
+          <Link href="/marketplace" className="text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:underline">
+            View All
+          </Link>
+        </div>
+        
+        <div className="grid md:grid-cols-3 gap-4">
+          {[...nftData]
+            .sort((a, b) => b.priceChange24h - a.priceChange24h)
+            .slice(0, 3)
+            .map((nft) => (
+              <Link key={nft.id} href={`/market/${nft.id}`}>
+                <div className={`rounded-2xl p-5 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-500/10 cursor-pointer border border-transparent hover:border-emerald-500/20 ${glass}`}>
+                  <div className="flex items-center gap-4 mb-4">
+                    <img src={nft.image} alt={nft.name} className="w-12 h-12 rounded-xl object-cover shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate">{nft.name}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{nft.collection}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-between pt-4 border-t border-black/5 dark:border-white/5">
+                    <div>
+                      <div className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">Price</div>
+                      <div className="font-bold">${nft.currentPrice.toFixed(2)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">24h Change</div>
+                      <div className={`font-semibold text-sm ${nft.priceChange24h >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                        {nft.priceChange24h >= 0 ? "+" : ""}{nft.priceChange24h.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+        </div>
       </div>
     </div>
   );
