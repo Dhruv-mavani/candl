@@ -16,7 +16,8 @@ export function NFTDetail() {
   const { id } = useParams();
   const nft = nftData.find((n) => n.id === id);
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
-  const [shares, setShares] = useState("");
+  const [inputMode, setInputMode] = useState<"Shares" | "USD" | "SOL">("Shares");
+  const [inputValue, setInputValue] = useState("");
   const [timeframe, setTimeframe] = useState("30d");
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
@@ -245,8 +246,26 @@ export function NFTDetail() {
     );
   }
 
-  const sharesNum = parseFloat(shares) || 0;
-  const totalCost = (sharesNum * nft.currentPrice).toFixed(2);
+  const inputNum = parseFloat(inputValue) || 0;
+  const SOL_PRICE = 145; // Mock SOL price
+
+  let calculatedShares = 0;
+  let calculatedUSD = 0;
+  let calculatedSOL = 0;
+
+  if (inputMode === "Shares") {
+    calculatedShares = inputNum;
+    calculatedUSD = inputNum * nft.currentPrice;
+    calculatedSOL = calculatedUSD / SOL_PRICE;
+  } else if (inputMode === "USD") {
+    calculatedUSD = inputNum;
+    calculatedShares = inputNum / nft.currentPrice;
+    calculatedSOL = inputNum / SOL_PRICE;
+  } else if (inputMode === "SOL") {
+    calculatedSOL = inputNum;
+    calculatedUSD = inputNum * SOL_PRICE;
+    calculatedShares = calculatedUSD / nft.currentPrice;
+  }
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
@@ -470,19 +489,40 @@ export function NFTDetail() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-slate-400 dark:text-slate-500 mb-1.5 block">Number of Shares</label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={shares}
-                  onChange={(e) => setShares(e.target.value)}
-                  className={`w-full h-12 px-4 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600`}
-                />
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs text-slate-400 dark:text-slate-500 block">Amount to {tradeType === "buy" ? "Buy" : "Sell"}</label>
+                  <div className="flex bg-slate-100 dark:bg-white/5 rounded-lg p-0.5">
+                    {["Shares", "USD", "SOL"].map(mode => (
+                      <button 
+                        key={mode}
+                        onClick={() => {
+                          setInputMode(mode as "Shares" | "USD" | "SOL");
+                          setInputValue(""); 
+                        }}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-all ${inputMode === mode ? "bg-white dark:bg-white/10 shadow-sm text-slate-800 dark:text-white" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    placeholder="0.00"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    className={`w-full h-12 pl-4 pr-16 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600`}
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">
+                    {inputMode}
+                  </div>
+                </div>
                 <div className="flex gap-1.5 mt-2">
-                  {[10, 50, 100, 500].map((amt) => (
+                  {(inputMode === "Shares" ? [10, 50, 100, 500] : inputMode === "USD" ? [100, 500, 1000, 5000] : [1, 5, 10, 50]).map((amt) => (
                     <button
                       key={amt}
-                      onClick={() => setShares(amt.toString())}
+                      onClick={() => setInputValue(amt.toString())}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${inset}
                         hover:bg-emerald-50 dark:hover:bg-emerald-400/10 hover:text-emerald-700 dark:hover:text-emerald-400`}
                     >
@@ -499,18 +539,22 @@ export function NFTDetail() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400 dark:text-slate-500">Shares</span>
-                  <span className="font-medium">{sharesNum}</span>
+                  <span className="font-medium">{calculatedShares > 0 ? (calculatedShares % 1 === 0 ? calculatedShares : calculatedShares.toFixed(4)) : "0"}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400 dark:text-slate-500">SOL Value</span>
+                  <span className="font-medium">{calculatedSOL > 0 ? calculatedSOL.toFixed(4) : "0"} SOL</span>
                 </div>
                 <div className="border-t border-black/5 dark:border-white/5 pt-2 flex justify-between">
-                  <span className="font-semibold text-sm">{tradeType === "buy" ? "Total Cost" : "Total Value"}</span>
+                  <span className="font-semibold text-sm">{tradeType === "buy" ? "Total Cost (USD)" : "Total Value (USD)"}</span>
                   <span className={`text-lg font-bold ${tradeType === "buy" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
-                    ${totalCost}
+                    ${calculatedUSD > 0 ? calculatedUSD.toFixed(2) : "0.00"}
                   </span>
                 </div>
               </div>
 
               <button
-                disabled={!shares || sharesNum <= 0}
+                disabled={!inputNum || inputNum <= 0}
                 className={`w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
                   ${tradeType === "buy"
                     ? "bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 shadow-lg shadow-emerald-400/25"
