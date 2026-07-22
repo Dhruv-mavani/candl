@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, Clock } from "lucide-react";
 import { portfolioData, nftData } from "@/lib/mockData";
-import { LineChart, Line, ResponsiveContainer } from "recharts";
+import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { useState } from "react";
 
 const glass =
@@ -28,7 +28,14 @@ export function Portfolio() {
   const profitLoss = totalValue - totalCost;
   const profitLossPercent = (profitLoss / totalCost) * 100;
 
-  const miniChart = Array.from({ length: 7 }, () => ({ value: totalValue * (0.95 + Math.random() * 0.1) }));
+  const miniChart = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return {
+      date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      value: totalValue * (0.85 + (i * 0.02) + Math.random() * 0.1) // make it trend upwards slightly
+    };
+  });
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
@@ -47,9 +54,24 @@ export function Portfolio() {
             Total Value
           </div>
           <div className="relative text-2xl font-bold mb-3">${totalValue.toFixed(2)}</div>
-          <ResponsiveContainer width="100%" height={44}>
+          <ResponsiveContainer width="100%" height={60}>
             <LineChart data={miniChart}>
-              <Line type="monotone" dataKey="value" stroke="#34d399" strokeWidth={2} dot={false} />
+              <Tooltip 
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    return (
+                      <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-slate-200 dark:border-white/10 p-2 rounded-lg shadow-lg text-xs z-50 relative">
+                        <div className="text-slate-500 dark:text-slate-400 mb-0.5">{payload[0].payload.date}</div>
+                        <div className="font-bold text-emerald-600 dark:text-emerald-400">${Number(payload[0].value).toFixed(2)}</div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+                cursor={{ stroke: 'rgba(52, 211, 153, 0.2)', strokeWidth: 1, strokeDasharray: '4 4' }}
+              />
+              <YAxis domain={['dataMin', 'dataMax']} hide />
+              <Line type="monotone" dataKey="value" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#34d399", strokeWidth: 0 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
