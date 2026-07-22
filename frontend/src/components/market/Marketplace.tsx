@@ -134,7 +134,7 @@ export function Marketplace() {
                 </div>
                 
                 <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/50 flex items-center justify-between text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                  <span>{nft.availableShares.toLocaleString()} shares</span>
+                  <span>{nft.circulatingSupply.toLocaleString()} shares</span>
                   <span>{nft.holders} holders</span>
                 </div>
               </div>

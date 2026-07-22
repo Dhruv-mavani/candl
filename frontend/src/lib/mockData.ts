@@ -5,8 +5,8 @@ export interface NFT {
   image: string;
   currentPrice: number;
   priceChange24h: number;
-  totalShares: number;
-  availableShares: number;
+  circulatingSupply: number;
+  reserveLiquidity: number;
   volume24h: number;
   marketCap: number;
   holders: number;
@@ -47,8 +47,8 @@ export const nftData: NFT[] = [
     image: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=400&fit=crop',
     currentPrice: 24.5,
     priceChange24h: 12.4,
-    totalShares: 10000,
-    availableShares: 3420,
+    circulatingSupply: 10000,
+    reserveLiquidity: 342000,
     volume24h: 125000,
     marketCap: 245000,
     holders: 1245,
@@ -61,8 +61,8 @@ export const nftData: NFT[] = [
     image: 'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=400&h=400&fit=crop',
     currentPrice: 18.2,
     priceChange24h: -5.3,
-    totalShares: 10000,
-    availableShares: 5670,
+    circulatingSupply: 10000,
+    reserveLiquidity: 567000,
     volume24h: 89000,
     marketCap: 182000,
     holders: 892,
@@ -75,8 +75,8 @@ export const nftData: NFT[] = [
     image: 'https://images.unsplash.com/photo-1634973357973-f2ed2657db3c?w=400&h=400&fit=crop',
     currentPrice: 35.8,
     priceChange24h: 8.7,
-    totalShares: 10000,
-    availableShares: 2340,
+    circulatingSupply: 10000,
+    reserveLiquidity: 234000,
     volume24h: 178000,
     marketCap: 358000,
     holders: 1876,
@@ -89,8 +89,8 @@ export const nftData: NFT[] = [
     image: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=400&h=400&fit=crop',
     currentPrice: 12.4,
     priceChange24h: 3.2,
-    totalShares: 10000,
-    availableShares: 6780,
+    circulatingSupply: 10000,
+    reserveLiquidity: 678000,
     volume24h: 65000,
     marketCap: 124000,
     holders: 567,
@@ -103,8 +103,8 @@ export const nftData: NFT[] = [
     image: 'https://images.unsplash.com/photo-1618172193622-ae2d025f4032?w=400&h=400&fit=crop',
     currentPrice: 28.9,
     priceChange24h: 15.6,
-    totalShares: 10000,
-    availableShares: 4120,
+    circulatingSupply: 10000,
+    reserveLiquidity: 412000,
     volume24h: 142000,
     marketCap: 289000,
     holders: 1456,
@@ -117,8 +117,8 @@ export const nftData: NFT[] = [
     image: 'https://images.unsplash.com/photo-1635322966219-b75ed372eb01?w=400&h=400&fit=crop',
     currentPrice: 42.1,
     priceChange24h: -2.8,
-    totalShares: 10000,
-    availableShares: 1890,
+    circulatingSupply: 10000,
+    reserveLiquidity: 189000,
     volume24h: 198000,
     marketCap: 421000,
     holders: 2134,
@@ -131,8 +131,8 @@ export const nftData: NFT[] = [
     image: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400&h=400&fit=crop',
     currentPrice: 19.7,
     priceChange24h: 6.4,
-    totalShares: 10000,
-    availableShares: 5230,
+    circulatingSupply: 10000,
+    reserveLiquidity: 523000,
     volume24h: 94000,
     marketCap: 197000,
     holders: 978,
@@ -145,8 +145,8 @@ export const nftData: NFT[] = [
     image: 'https://images.unsplash.com/photo-1617791160505-6f00504e3519?w=400&h=400&fit=crop',
     currentPrice: 31.5,
     priceChange24h: 9.1,
-    totalShares: 10000,
-    availableShares: 3670,
+    circulatingSupply: 10000,
+    reserveLiquidity: 367000,
     volume24h: 156000,
     marketCap: 315000,
     holders: 1687,

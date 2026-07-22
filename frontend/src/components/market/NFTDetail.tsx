@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, TrendingUp, TrendingDown, DollarSign, BarChart3, Share2, Activity,
-  Crosshair, TrendingUp as TrendLineIcon, Minus, Type, Smile, Ruler, ZoomIn, Magnet, Pencil, BarChart2 } from "lucide-react";
+  Crosshair, TrendingUp as TrendLineIcon, Minus, Type, Smile, Ruler, ZoomIn, Magnet, Pencil, BarChart2, Droplets } from "lucide-react";
 import { nftData, generateCandlestickHistory, CandleData } from "@/lib/mockData";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, CrosshairMode, LineStyle, PriceScaleMode } from "lightweight-charts";
 
@@ -281,7 +281,7 @@ export function NFTDetail() {
                 {[
                   { label: "Market Cap", value: `$${(nft.marketCap / 1000).toFixed(0)}K`, color: "text-sky-600 dark:text-sky-400" },
                   { label: "24h Volume", value: `$${(nft.volume24h / 1000).toFixed(0)}K`, color: "text-amber-500 dark:text-amber-400" },
-                  { label: "Total Shares", value: nft.totalShares.toLocaleString(), color: "" },
+                  { label: "Circulating Supply", value: nft.circulatingSupply.toLocaleString(), color: "" },
                   { label: "Holders", value: nft.holders.toString(), color: "" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className={`p-3 ${inset}`}>
@@ -293,20 +293,17 @@ export function NFTDetail() {
 
               <div className={`p-4 ${inset}`}>
                 <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 mb-2">
-                  <Share2 className="w-3.5 h-3.5" />
-                  Available Shares
+                  <Droplets className="w-3.5 h-3.5" />
+                  Reserve Liquidity
                 </div>
                 <div className="flex items-baseline gap-1.5 mb-2">
                   <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                    {nft.availableShares.toLocaleString()}
+                    ${nft.reserveLiquidity.toLocaleString()}
                   </span>
-                  <span className="text-xs text-slate-400">/ {nft.totalShares.toLocaleString()}</span>
+                  <span className="text-xs text-slate-400 ml-1">locked in curve</span>
                 </div>
                 <div className="h-1.5 bg-slate-200/60 dark:bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500"
-                    style={{ width: `${(nft.availableShares / nft.totalShares) * 100}%` }}
-                  />
+                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 w-full" />
                 </div>
               </div>
             </div>
