@@ -59,3 +59,16 @@
 **Consequences**:
 - **Pros**: Single, unambiguous pricing model to implement. Matches the economics doc's explicit "no virtual reserves, no fake liquidity" design goal, which is also the stronger trust story for traders. Global `ProtocolConfig` makes future governance-driven curve/fee tuning straightforward without touching per-market accounts.
 - **Cons**: `S^3` overflows `u64` far sooner than a constant-product term would, so `Reserve(S)` must be computed in `u128` with explicit bounds checking (documented in docs/06-smart-contracts.md's Security Considerations). Anyone who had started implementation against the old virtual-reserve model needs to rework it.
+
+## 5. Seed `vault` with the Rent-Exempt Minimum at Market Creation
+
+**Date**: 2026-08-05
+**Status**: Accepted
+
+**Context**: A 100-simulated-user smoke test against the deployed devnet program found that *every* small `buy` on a freshly created market failed with Solana's `InsufficientFundsForRent` runtime error. `vault` (`buy.rs`) is a plain `SystemAccount` starting at 0 lamports; Solana requires any account to be either exactly 0 lamports or above the ~0.00089 SOL rent-exempt minimum, and the cubic curve's cost near `outstanding_shares = 0` (e.g. 5 shares costs ~125 lamports at the deployed curve params) is far below that floor. Because a failed transaction leaves no on-chain trace, `vault` could never organically cross the threshold through ordinary small purchases -- this wasn't a slow bootstrap problem, it was a permanent deadlock. Confirmed empirically: a single buy of 150+ shares (whose cost alone clears the threshold) succeeds immediately, since the rent check is against the final balance after one transaction, not the cumulative delta. This also explains why the pre-fix devnet markets showed `reserveSol: "0"` no matter how many small buys were attempted against them.
+
+**Decision**: `create_market` now transfers the rent-exempt minimum (`Rent::minimum_balance(0)`) from `creator` into `vault` as its very last step, keeping it independent of `real_sol_reserves` (buy/sell logic is unchanged -- it only ever adds/subtracts the curve-tracked amount, never dips into the seed). `redeem` refunds `vault`'s entire remaining balance to `creator` once `outstanding_shares` reaches 0 (full settlement) -- at that point `real_sol_reserves` is already 0, so the remaining balance is exactly the untouched seed. The frontend surfaces this as a one-time, refundable cost when a creator opens the "Create Market" dialog.
+
+**Consequences**:
+- **Pros**: Every market, however small its first trade, is tradable from the moment it's created. The cost is fully refunded to the creator at settlement rather than becoming permanent protocol-owned dust. No change to the trading math itself (`real_sol_reserves` semantics are untouched), so `buy`/`sell`/pricing logic and existing integrations are unaffected.
+- **Cons**: Market creation now costs the creator a small extra deposit (~0.00089 SOL) beyond the account-rent costs it already paid, recovered only once the market fully settles (which could be a long time, or never, if the market never reaches zero outstanding shares). Markets created under the pre-fix program version have a permanently unseeded, un-tradable `vault` unless manually topped up -- this affects the two devnet markets created before this fix.

@@ -283,11 +283,15 @@ export type Candl = {
         {
           "name": "vault",
           "docs": [
-            "SOL reserve. Never explicitly created -- a fresh PDA implicitly",
-            "exists (owned by the System Program, 0 lamports) until its first",
-            "deposit in `buy`. Anchor only needs to validate the PDA derivation",
-            "here so `market.vault` stores the right address."
+            "SOL reserve. Never `init`ed as a data account -- the handler below",
+            "seeds it with the rent-exempt minimum directly, since a bare",
+            "SystemAccount holding a nonzero balance below that threshold makes",
+            "Solana reject the whole transaction (this is what small early buys",
+            "hit before this seeding existed: see docs/15-decisions.md ADR #5).",
+            "The seed is refunded to `creator` in `redeem` once the market is",
+            "fully settled (see redeem.rs)."
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -644,6 +648,14 @@ export type Candl = {
         },
         {
           "name": "creatorTokenAccount",
+          "writable": true
+        },
+        {
+          "name": "creator",
+          "docs": [
+            "(the vault's rent-exempt seed from create_market.rs, refunded here",
+            "once the market is fully settled)."
+          ],
           "writable": true
         },
         {

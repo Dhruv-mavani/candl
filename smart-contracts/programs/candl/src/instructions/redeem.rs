@@ -50,6 +50,12 @@ pub struct Redeem<'info> {
     )]
     pub creator_token_account: Account<'info, TokenAccount>,
 
+    /// CHECK: validated against market.creator; only receives lamports
+    /// (the vault's rent-exempt seed from create_market.rs, refunded here
+    /// once the market is fully settled).
+    #[account(mut, address = market.creator)]
+    pub creator: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -112,6 +118,21 @@ pub fn handler(ctx: Context<Redeem>, shares: u64) -> Result<()> {
             ),
             1,
         )?;
+
+        // real_sol_reserves just hit 0, so everything left in the vault is
+        // the rent-exempt seed create_market.rs deposited -- refund all of
+        // it to the creator now that the vault will never be used again.
+        let vault_remaining = ctx.accounts.vault.lamports();
+        if vault_remaining > 0 {
+            system_program::transfer(
+                CpiContext::new_with_signer(
+                    system_program::ID,
+                    SolTransfer { from: ctx.accounts.vault.to_account_info(), to: ctx.accounts.creator.to_account_info() },
+                    &[vault_signer_seeds],
+                ),
+                vault_remaining,
+            )?;
+        }
 
         ctx.accounts.market.state = MarketState::Settled;
     }

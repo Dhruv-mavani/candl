@@ -35,6 +35,7 @@ struct Ctx {
     market: Pubkey,
     bonding_curve: Pubkey,
     vault: Pubkey,
+    vault_rent_exempt_seed: u64,
     escrow: Pubkey,
     trader_position: Pubkey,
 }
@@ -147,6 +148,8 @@ fn setup() -> Ctx {
     );
     send(&mut svm, &[create_market_ix], &creator, &[]).unwrap();
 
+    let vault_rent_exempt_seed = svm.minimum_balance_for_rent_exemption(0);
+
     Ctx {
         svm,
         authority,
@@ -159,6 +162,7 @@ fn setup() -> Ctx {
         market,
         bonding_curve,
         vault,
+        vault_rent_exempt_seed,
         escrow,
         trader_position,
     }
@@ -219,7 +223,11 @@ fn buy_increases_supply_and_reserve_by_the_curve_amount() {
     assert_eq!(position.trader, ctx.trader.pubkey());
 
     let vault_balance = ctx.svm.get_balance(&ctx.vault).unwrap();
-    assert_eq!(vault_balance, bonding_curve.real_sol_reserves, "vault must exactly back the curve's reserve");
+    assert_eq!(
+        vault_balance,
+        bonding_curve.real_sol_reserves + ctx.vault_rent_exempt_seed,
+        "vault must back the curve's reserve plus its untouched rent-exempt seed"
+    );
 }
 
 #[test]
@@ -286,6 +294,7 @@ fn settle_and_full_redemption_returns_nft_to_creator() {
     assert_eq!(market.state, MarketState::Settling);
 
     let position: TraderPosition = fetch(&ctx.svm, &ctx.trader_position);
+    let creator_balance_before = ctx.svm.get_balance(&ctx.creator.pubkey()).unwrap();
     let redeem_ix = Instruction::new_with_bytes(
         candl::id(),
         &candl::instruction::Redeem { shares: position.shares }.data(),
@@ -298,6 +307,7 @@ fn settle_and_full_redemption_returns_nft_to_creator() {
             escrow: ctx.escrow,
             nft_mint: ctx.nft_mint.pubkey(),
             creator_token_account: ctx.creator_return_token_account.pubkey(),
+            creator: ctx.creator.pubkey(),
             token_program: spl_token::id(),
             system_program: system_program::ID,
         }
@@ -315,6 +325,33 @@ fn settle_and_full_redemption_returns_nft_to_creator() {
     let creator_nft_account =
         SplTokenAccount::unpack(&ctx.svm.get_account(&ctx.creator_return_token_account.pubkey()).unwrap().data).unwrap();
     assert_eq!(creator_nft_account.amount, 1, "NFT must be returned to the creator once the market is fully settled");
+
+    // A fully-drained SystemAccount ceases to exist on Solana -- get_balance
+    // returning None (not Some(0)) is itself proof no dust was left behind.
+    assert_eq!(ctx.svm.get_balance(&ctx.vault).unwrap_or(0), 0, "vault's rent-exempt seed must be fully refunded, not left as dust");
+    let creator_balance_after = ctx.svm.get_balance(&ctx.creator.pubkey()).unwrap();
+    assert_eq!(
+        creator_balance_after,
+        creator_balance_before + ctx.vault_rent_exempt_seed,
+        "creator must receive back exactly the rent-exempt seed they paid at market creation"
+    );
+}
+
+#[test]
+fn buy_of_a_small_share_amount_succeeds_immediately_after_market_creation() {
+    // Regression test: before the vault was seeded with the rent-exempt
+    // minimum at create_market time, ANY buy small enough to leave the
+    // vault below that threshold (e.g. 3 shares, costing a few hundred
+    // lamports on this curve) failed the whole transaction with Solana's
+    // InsufficientFundsForRent runtime error -- and since a failed tx
+    // leaves no trace, the vault could never organically cross the
+    // threshold through small purchases. See docs/15-decisions.md ADR #5.
+    let mut ctx = setup();
+    let ix = buy_ix(&ctx, 3, LAMPORTS_PER_SOL);
+    send(&mut ctx.svm, &[ix], &ctx.trader, &[]).expect("a small first buy must succeed now that the vault is pre-funded");
+
+    let bonding_curve: BondingCurve = fetch(&ctx.svm, &ctx.bonding_curve);
+    assert_eq!(bonding_curve.outstanding_shares, 3);
 }
 
 #[test]

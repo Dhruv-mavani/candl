@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_lang::system_program::{self as sol_system_program, Transfer as SolTransfer};
+use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer as TokenTransfer};
 
 use crate::constants::*;
 use crate::errors::CandlError;
@@ -29,11 +30,14 @@ pub struct CreateMarket<'info> {
     )]
     pub bonding_curve: Account<'info, BondingCurve>,
 
-    /// SOL reserve. Never explicitly created -- a fresh PDA implicitly
-    /// exists (owned by the System Program, 0 lamports) until its first
-    /// deposit in `buy`. Anchor only needs to validate the PDA derivation
-    /// here so `market.vault` stores the right address.
-    #[account(seeds = [VAULT_SEED, market.key().as_ref()], bump)]
+    /// SOL reserve. Never `init`ed as a data account -- the handler below
+    /// seeds it with the rent-exempt minimum directly, since a bare
+    /// SystemAccount holding a nonzero balance below that threshold makes
+    /// Solana reject the whole transaction (this is what small early buys
+    /// hit before this seeding existed: see docs/15-decisions.md ADR #5).
+    /// The seed is refunded to `creator` in `redeem` once the market is
+    /// fully settled (see redeem.rs).
+    #[account(mut, seeds = [VAULT_SEED, market.key().as_ref()], bump)]
     pub vault: SystemAccount<'info>,
 
     /// Holds the deposited NFT. Its own PDA address doubles as its SPL
@@ -76,13 +80,26 @@ pub fn handler(ctx: Context<CreateMarket>, duration: i64) -> Result<()> {
     token::transfer(
         CpiContext::new(
             token::ID,
-            Transfer {
+            TokenTransfer {
                 from: ctx.accounts.creator_token_account.to_account_info(),
                 to: ctx.accounts.escrow.to_account_info(),
                 authority: ctx.accounts.creator.to_account_info(),
             },
         ),
         1,
+    )?;
+
+    // Bootstrap the vault past Solana's rent-exempt floor so the first buy
+    // -- however small -- doesn't leave it in a nonzero-but-sub-threshold
+    // state, which the runtime rejects outright. Refunded to creator on
+    // full settlement (redeem.rs).
+    let vault_rent_exempt_minimum = ctx.accounts.rent.minimum_balance(0);
+    sol_system_program::transfer(
+        CpiContext::new(
+            sol_system_program::ID,
+            SolTransfer { from: ctx.accounts.creator.to_account_info(), to: ctx.accounts.vault.to_account_info() },
+        ),
+        vault_rent_exempt_minimum,
     )?;
 
     let now = Clock::get()?.unix_timestamp;
