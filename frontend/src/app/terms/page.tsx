@@ -2,11 +2,13 @@
 import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
 
+const LAST_UPDATED = "August 3, 2026";
+
 export default function TermsOfService() {
   return (
     <div className="container mx-auto px-4 py-16 max-w-4xl">
       <Link href="/">
-        <button className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-emerald-500 transition-colors mb-8">
+        <button type="button" className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-emerald-500 transition-colors mb-8">
           <ArrowLeft className="w-4 h-4" /> Back to Home
         </button>
       </Link>
@@ -18,7 +20,7 @@ export default function TermsOfService() {
           </div>
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Terms of Service</h1>
-            <p className="text-slate-500 dark:text-slate-400">Last updated: {new Date().toLocaleDateString()}</p>
+            <p className="text-slate-500 dark:text-slate-400">Last updated: {LAST_UPDATED}</p>
           </div>
         </div>
 
