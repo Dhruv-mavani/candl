@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { Lock, Zap, TrendingUp, Coins, RefreshCcw, Terminal } from "lucide-react";
 import { createChart, ColorType, CandlestickSeries, Time } from "lightweight-charts";
 
@@ -188,10 +189,12 @@ export function CandlSimulator() {
           
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded bg-slate-300 dark:bg-slate-800 overflow-hidden relative border border-slate-300 dark:border-slate-700">
-              <img 
-                src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop" 
+              <Image
+                src="/nfts/002.jpg"
                 alt="Mock"
-                className="w-full h-full object-cover opacity-80"
+                fill
+                sizes="32px"
+                className="object-cover opacity-80"
                 style={{ filter: step > 1 ? 'none' : 'grayscale(100%)' }}
               />
               {step === 1 && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><Lock className="w-3 h-3 text-white" /></div>}
@@ -232,7 +235,7 @@ export function CandlSimulator() {
           {step > 1 && (
             <div className="absolute top-4 left-4 z-10 flex items-center gap-1 bg-white/80 dark:bg-[#121820]/80 backdrop-blur-md p-1 rounded-lg border border-slate-200 dark:border-slate-800">
               {INTERVALS.map((interval) => (
-                <button
+                <button type="button"
                   key={interval}
                   onClick={() => setActiveInterval(interval)}
                   className={`px-3 py-1 rounded text-xs font-bold transition-all ${
@@ -288,26 +291,26 @@ export function CandlSimulator() {
 
             <div className="flex flex-col justify-center min-w-[280px]">
               {step === 1 && (
-                <button onClick={handleDeposit} className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 rounded">
+                <button type="button" onClick={handleDeposit} className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm uppercase tracking-wider transition active:scale-95 flex items-center justify-center gap-2 rounded">
                   <Lock className="w-4 h-4" /> Deposit Asset
                 </button>
               )}
               {step === 2 && (
-                <button onClick={handleInitialize} className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 rounded">
+                <button type="button" onClick={handleInitialize} className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm uppercase tracking-wider transition active:scale-95 flex items-center justify-center gap-2 rounded">
                   <Zap className="w-4 h-4" /> Initialize Market
                 </button>
               )}
               {step === 3 && (
-                <button onClick={() => handleBuy(10)} className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 rounded">
+                <button type="button" onClick={() => handleBuy(10)} className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm uppercase tracking-wider transition active:scale-95 flex items-center justify-center gap-2 rounded">
                   <TrendingUp className="w-4 h-4" /> Buy 10 Shares
                 </button>
               )}
               {step === 4 && (
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => handleBuy(5)} className="py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold text-sm uppercase tracking-wider transition-all active:scale-95 rounded">
+                  <button type="button" onClick={() => handleBuy(5)} className="py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold text-sm uppercase tracking-wider transition active:scale-95 rounded">
                     Buy 5
                   </button>
-                  <button onClick={() => handleSell(5)} disabled={shares < 5} className="py-3 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold text-sm uppercase tracking-wider transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 rounded">
+                  <button type="button" onClick={() => handleSell(5)} disabled={shares < 5} className="py-3 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold text-sm uppercase tracking-wider transition active:scale-95 disabled:opacity-50 disabled:active:scale-100 rounded">
                     Sell 5
                   </button>
                 </div>
@@ -323,7 +326,7 @@ export function CandlSimulator() {
             </div>
             
             {step === 4 && (
-              <button onClick={handleReset} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 uppercase font-bold transition-colors">
+              <button type="button" onClick={handleReset} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 uppercase font-bold transition-colors">
                 <RefreshCcw className="w-3 h-3" /> Reset
               </button>
             )}

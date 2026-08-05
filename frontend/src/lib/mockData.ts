@@ -42,9 +42,9 @@ export interface Transaction {
 export const nftData: NFT[] = [
   {
     id: '1',
-    name: 'Cosmic Ape #4521',
-    collection: 'Cosmic Apes',
-    image: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=400&fit=crop',
+    name: 'Genesis #001',
+    collection: 'Candl Genesis',
+    image: '/nfts/001.jpg',
     currentPrice: 24.5,
     priceChange24h: 12.4,
     circulatingSupply: 10000,
@@ -56,9 +56,9 @@ export const nftData: NFT[] = [
   },
   {
     id: '2',
-    name: 'CyberPunk #892',
-    collection: 'CyberPunks',
-    image: 'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?w=400&h=400&fit=crop',
+    name: 'Apex #002',
+    collection: 'Candl Genesis',
+    image: '/nfts/002.jpg',
     currentPrice: 18.2,
     priceChange24h: -5.3,
     circulatingSupply: 10000,
@@ -70,9 +70,9 @@ export const nftData: NFT[] = [
   },
   {
     id: '3',
-    name: 'Digital Dreams #156',
-    collection: 'Digital Dreams',
-    image: 'https://images.unsplash.com/photo-1634973357973-f2ed2657db3c?w=400&h=400&fit=crop',
+    name: 'Phantom #003',
+    collection: 'Candl Genesis',
+    image: '/nfts/003.jpg',
     currentPrice: 35.8,
     priceChange24h: 8.7,
     circulatingSupply: 10000,
@@ -84,9 +84,9 @@ export const nftData: NFT[] = [
   },
   {
     id: '4',
-    name: 'Meta Kitty #723',
-    collection: 'Meta Kitties',
-    image: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=400&h=400&fit=crop',
+    name: 'Griffin #004',
+    collection: 'Candl Genesis',
+    image: '/nfts/004.jpg',
     currentPrice: 12.4,
     priceChange24h: 3.2,
     circulatingSupply: 10000,
@@ -98,9 +98,9 @@ export const nftData: NFT[] = [
   },
   {
     id: '5',
-    name: 'Abstract Wave #45',
-    collection: 'Abstract Waves',
-    image: 'https://images.unsplash.com/photo-1618172193622-ae2d025f4032?w=400&h=400&fit=crop',
+    name: 'Kitsune #005',
+    collection: 'Candl Genesis',
+    image: '/nfts/005.jpg',
     currentPrice: 28.9,
     priceChange24h: 15.6,
     circulatingSupply: 10000,
@@ -108,48 +108,6 @@ export const nftData: NFT[] = [
     volume24h: 142000,
     marketCap: 289000,
     holders: 1456,
-    category: 'Art'
-  },
-  {
-    id: '6',
-    name: 'Neon Skull #982',
-    collection: 'Neon Skulls',
-    image: 'https://images.unsplash.com/photo-1635322966219-b75ed372eb01?w=400&h=400&fit=crop',
-    currentPrice: 42.1,
-    priceChange24h: -2.8,
-    circulatingSupply: 10000,
-    reserveLiquidity: 189000,
-    volume24h: 198000,
-    marketCap: 421000,
-    holders: 2134,
-    category: 'Collectibles'
-  },
-  {
-    id: '7',
-    name: 'Pixel Warriors #334',
-    collection: 'Pixel Warriors',
-    image: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=400&h=400&fit=crop',
-    currentPrice: 19.7,
-    priceChange24h: 6.4,
-    circulatingSupply: 10000,
-    reserveLiquidity: 523000,
-    volume24h: 94000,
-    marketCap: 197000,
-    holders: 978,
-    category: 'Gaming'
-  },
-  {
-    id: '8',
-    name: 'Galaxy Girls #1203',
-    collection: 'Galaxy Girls',
-    image: 'https://images.unsplash.com/photo-1617791160505-6f00504e3519?w=400&h=400&fit=crop',
-    currentPrice: 31.5,
-    priceChange24h: 9.1,
-    circulatingSupply: 10000,
-    reserveLiquidity: 367000,
-    volume24h: 156000,
-    marketCap: 315000,
-    holders: 1687,
     category: 'Art'
   }
 ];
@@ -226,45 +184,47 @@ export const generateCandlestickHistory = (currentPrice: number, days: number = 
   return data;
 };
 
-export const portfolioData: Transaction[] = [
-  {
-    id: 't1',
-    type: 'buy',
-    nftId: '1',
-    nftName: 'Cosmic Ape #4521',
-    shares: 50,
-    price: 23.8,
-    total: 1190,
-    timestamp: new Date(Date.now() - 3600000 * 24).toISOString()
-  },
-  {
-    id: 't2',
-    type: 'buy',
-    nftId: '3',
-    nftName: 'Digital Dreams #156',
-    shares: 30,
-    price: 32.1,
-    total: 963,
-    timestamp: new Date(Date.now() - 3600000 * 48).toISOString()
-  },
-  {
-    id: 't3',
-    type: 'sell',
-    nftId: '2',
-    nftName: 'CyberPunk #892',
-    shares: 25,
-    price: 19.5,
-    total: 487.5,
-    timestamp: new Date(Date.now() - 3600000 * 72).toISOString()
-  },
-  {
-    id: 't4',
-    type: 'buy',
-    nftId: '5',
-    nftName: 'Abstract Wave #45',
-    shares: 40,
-    price: 25.2,
-    total: 1008,
-    timestamp: new Date(Date.now() - 3600000 * 96).toISOString()
-  }
-];
+export function getPortfolioData(): Transaction[] {
+  return [
+    {
+      id: 't1',
+      type: 'buy',
+      nftId: '1',
+      nftName: 'Genesis #001',
+      shares: 50,
+      price: 23.8,
+      total: 1190,
+      timestamp: new Date(Date.now() - 3600000 * 24).toISOString()
+    },
+    {
+      id: 't2',
+      type: 'buy',
+      nftId: '3',
+      nftName: 'Phantom #003',
+      shares: 30,
+      price: 32.1,
+      total: 963,
+      timestamp: new Date(Date.now() - 3600000 * 48).toISOString()
+    },
+    {
+      id: 't3',
+      type: 'sell',
+      nftId: '2',
+      nftName: 'Apex #002',
+      shares: 25,
+      price: 19.5,
+      total: 487.5,
+      timestamp: new Date(Date.now() - 3600000 * 72).toISOString()
+    },
+    {
+      id: 't4',
+      type: 'buy',
+      nftId: '5',
+      nftName: 'Kitsune #005',
+      shares: 40,
+      price: 25.2,
+      total: 1008,
+      timestamp: new Date(Date.now() - 3600000 * 96).toISOString()
+    }
+  ];
+}

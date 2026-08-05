@@ -1,9 +1,22 @@
 "use client";
 import Link from "next/link";
-import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, Clock } from "lucide-react";
-import { portfolioData, nftData } from "@/lib/mockData";
+import Image from "next/image";
+import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, Clock, ImageOff, Sparkles, X } from "lucide-react";
+import { getPortfolioData, nftData } from "@/lib/mockData";
+import { useNFTStore, type OwnedNFT } from "@/lib/nft-store";
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../common/alert-dialog";
+import { CreateMarketDialog } from "./CreateMarketDialog";
 
 const glass =
   "bg-white/50 dark:bg-white/[0.05] backdrop-blur-xl border border-white/70 dark:border-white/10 shadow-[0_8px_32px_rgba(16,185,129,0.07)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.3)]";
@@ -11,7 +24,13 @@ const inset =
   "bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/[0.07] rounded-xl";
 
 export function Portfolio() {
-  const [tab, setTab] = useState<"holdings" | "history">("holdings");
+  const portfolioData = getPortfolioData();
+  const [tab, setTab] = useState<"holdings" | "mynfts" | "history">("holdings");
+  const myNFTs = useNFTStore((s) => s.nfts);
+  const removeNFT = useNFTStore((s) => s.removeNFT);
+  const [nftPendingRemoval, setNftPendingRemoval] = useState<OwnedNFT | null>(null);
+  const [nftForMarketCreation, setNftForMarketCreation] = useState<OwnedNFT | null>(null);
+  const [createMarketOpen, setCreateMarketOpen] = useState(false);
 
   const holdings = [
     { nftId: "1", shares: 50, avgPrice: 23.8 },
@@ -32,13 +51,52 @@ export function Portfolio() {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
     return {
-      date: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
       value: totalValue * (0.85 + (i * 0.02) + Math.random() * 0.1) // make it trend upwards slightly
     };
   });
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
+      <AlertDialog
+        open={nftPendingRemoval !== null}
+        onOpenChange={(open) => !open && setNftPendingRemoval(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {nftPendingRemoval?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this NFT from your Candl list. This only
+              removes it here — it does not affect the NFT on-chain — but this action
+              cannot be undone and you&apos;ll need to import it again to see it here.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setNftPendingRemoval(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (nftPendingRemoval) removeNFT(nftPendingRemoval.mint);
+                setNftPendingRemoval(null);
+              }}
+            >
+              Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <CreateMarketDialog
+        open={createMarketOpen}
+        onOpenChange={(open) => {
+          setCreateMarketOpen(open);
+          if (!open) setNftForMarketCreation(null);
+        }}
+        nft={nftForMarketCreation}
+      />
+
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-1">My Portfolio</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">Track your NFT share investments</p>
@@ -105,8 +163,8 @@ export function Portfolio() {
 
       {/* Tabs */}
       <div className={`flex items-center gap-1 p-1 rounded-2xl mb-5 w-fit ${glass}`}>
-        {(["holdings", "history"] as const).map((t) => (
-          <button
+        {(["holdings", "mynfts", "history"] as const).map((t) => (
+          <button type="button"
             key={t}
             onClick={() => setTab(t)}
             className={`px-5 py-2 rounded-xl text-sm font-medium capitalize transition-all
@@ -115,7 +173,7 @@ export function Portfolio() {
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               }`}
           >
-            {t === "history" ? "Transaction History" : "Holdings"}
+            {t === "history" ? "Transaction History" : t === "mynfts" ? `My NFTs (${myNFTs.length})` : "Holdings"}
           </button>
         ))}
       </div>
@@ -146,7 +204,7 @@ export function Portfolio() {
                   <div className="grid grid-cols-2 md:grid-cols-12 gap-y-4 md:gap-4 items-center p-4 border-b border-black/5 dark:border-white/5 last:border-0 hover:bg-black/[0.02] dark:hover:bg-white/[0.04] transition-colors">
                     {/* Asset */}
                     <div className="col-span-2 md:col-span-4 flex items-center gap-3">
-                      <img src={nft.image} alt={nft.name} className="w-11 h-11 rounded-lg object-cover shrink-0 shadow-sm" />
+                      <Image src={nft.image} alt={nft.name} width={44} height={44} className="w-11 h-11 rounded-lg object-cover shrink-0 shadow-sm" />
                       <div>
                         <div className="font-semibold text-sm">{nft.name}</div>
                         <div className="text-xs text-slate-500 dark:text-slate-400">{nft.collection}</div>
@@ -191,6 +249,83 @@ export function Portfolio() {
         </div>
       )}
 
+      {/* My NFTs */}
+      {tab === "mynfts" && (
+        <div className={`rounded-2xl overflow-hidden ${glass}`}>
+          {myNFTs.length === 0 ? (
+            <div className="p-12 text-center">
+              <Sparkles className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-4" />
+              <h3 className="font-semibold mb-1">No NFTs Yet</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Use &ldquo;Create NFT&rdquo; or &ldquo;Import NFT&rdquo; in the navbar to add NFTs from your wallet.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5">
+              {myNFTs.map((nft) => (
+                <div
+                  key={nft.mint}
+                  className={`relative rounded-xl overflow-hidden p-3 flex flex-col gap-2 ${inset}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setNftPendingRemoval(nft)}
+                    aria-label={`Remove ${nft.name}`}
+                    className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                  {nft.image ? (
+                    // nft.image comes from user-imported/created NFT metadata — an arbitrary
+                    // external URL (any IPFS/Arweave/host) that next/image's loader cannot
+                    // resolve without a pre-configured remotePatterns entry.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={nft.image} alt={nft.name} className="w-full aspect-square rounded-lg object-cover" />
+                  ) : (
+                    <div className="w-full aspect-square rounded-lg bg-black/5 dark:bg-white/5 flex items-center justify-center">
+                      <ImageOff className="w-6 h-6 text-slate-400" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm truncate">{nft.name}</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{nft.mint}</div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full uppercase tracking-wide
+                        ${nft.source === "created"
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-400"
+                          : "bg-sky-100 text-sky-700 dark:bg-sky-400/10 dark:text-sky-400"
+                        }`}
+                    >
+                      {nft.source}
+                    </span>
+                    <a
+                      href={`https://explorer.solana.com/address/${nft.mint}?cluster=devnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline"
+                    >
+                      Explorer
+                    </a>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNftForMarketCreation(nft);
+                      setCreateMarketOpen(true);
+                    }}
+                    className="w-full py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-400 to-teal-500 text-white hover:from-emerald-500 hover:to-teal-600 transition-colors"
+                  >
+                    Create Market
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* History */}
       {tab === "history" && (
         <div className={`rounded-2xl overflow-hidden ${glass}`}>
@@ -228,7 +363,7 @@ export function Portfolio() {
                       {tx.type === "buy" ? "-" : "+"}${tx.total.toFixed(2)}
                     </div>
                     <div className="text-xs text-slate-400 dark:text-slate-500">
-                      {new Date(tx.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {new Date(tx.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })}
                     </div>
                   </div>
                 </div>
@@ -260,7 +395,7 @@ export function Portfolio() {
               <Link key={nft.id} href={`/market/${nft.id}`}>
                 <div className={`rounded-2xl p-5 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-emerald-500/10 cursor-pointer border border-transparent hover:border-emerald-500/20 ${glass}`}>
                   <div className="flex items-center gap-4 mb-4">
-                    <img src={nft.image} alt={nft.name} className="w-12 h-12 rounded-xl object-cover shrink-0" />
+                    <Image src={nft.image} alt={nft.name} width={48} height={48} className="w-12 h-12 rounded-xl object-cover shrink-0" />
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{nft.name}</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{nft.collection}</div>

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { ArrowLeft, TrendingUp, TrendingDown, DollarSign, BarChart3, Share2, Activity,
   Crosshair, TrendingUp as TrendLineIcon, Minus, Type, Smile, Ruler, ZoomIn, Magnet, Pencil, BarChart2, Droplets, ChevronUp, ChevronDown } from "lucide-react";
@@ -246,7 +247,7 @@ export function NFTDetail() {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-16 text-center">
         <h2 className="text-2xl font-bold mb-4">NFT not found</h2>
         <Link href="/marketplace">
-          <button className="px-5 py-2.5 rounded-xl bg-emerald-500 text-white font-medium">Back to Marketplace</button>
+          <button type="button" className="px-5 py-2.5 rounded-xl bg-emerald-500 text-white font-medium">Back to Marketplace</button>
         </Link>
       </div>
     );
@@ -289,7 +290,7 @@ export function NFTDetail() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
       <Link href="/marketplace">
-        <button className="flex items-center gap-1.5 mb-6 text-sm text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+        <button type="button" className="flex items-center gap-1.5 mb-6 text-sm text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
           <ArrowLeft className="w-4 h-4" />
           Back to Marketplace
         </button>
@@ -300,7 +301,7 @@ export function NFTDetail() {
         <div className="lg:col-span-1 space-y-5">
           <div className={`rounded-2xl overflow-hidden ${glass}`}>
             <div className="relative aspect-square">
-              <img src={nft.image} alt={nft.name} className="w-full h-full object-cover" />
+              <Image src={nft.image} alt={nft.name} fill sizes="(min-width: 1024px) 33vw, 100vw" className="object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/10" />
               <div className={`absolute top-4 right-4 backdrop-blur-sm text-white px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1.5 text-sm
                 ${nft.priceChange24h >= 0 ? "bg-emerald-500/85" : "bg-rose-500/85"}`}>
@@ -410,7 +411,7 @@ export function NFTDetail() {
               {/* Timeframe shortcuts in footer */}
               <div className="flex items-center gap-1 text-xs font-mono">
                 {["1d", "7d", "30d", "90d", "1y"].map((tf) => (
-                  <button
+                  <button type="button"
                     key={tf}
                     onClick={() => setTimeframe(tf)}
                     className={`px-2 py-0.5 rounded transition-all
@@ -428,9 +429,9 @@ export function NFTDetail() {
 
               {/* Right side: timestamp + scale controls */}
               <div className="flex items-center gap-2 text-xs font-mono text-slate-400 dark:text-slate-500">
-                <span>{new Date().toLocaleTimeString("en-US", { hour12: false })} UTC</span>
+                <span>{mounted ? new Date().toLocaleTimeString("en-US", { hour12: false, timeZone: "UTC" }) : "--:--:--"} UTC</span>
                 <span className="text-slate-300 dark:text-slate-600">|</span>
-                <button
+                <button type="button"
                   onClick={() => {
                     setPriceScaleMode("percentage");
                     chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Percentage });
@@ -439,7 +440,7 @@ export function NFTDetail() {
                 >
                   %
                 </button>
-                <button
+                <button type="button"
                   onClick={() => {
                     setPriceScaleMode("log");
                     chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Logarithmic });
@@ -448,7 +449,7 @@ export function NFTDetail() {
                 >
                   log
                 </button>
-                <button
+                <button type="button"
                   onClick={() => {
                     setPriceScaleMode("normal");
                     chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Normal, autoScale: true });
@@ -484,7 +485,7 @@ export function NFTDetail() {
 
             {/* Buy / Sell toggle */}
             <div className={`flex items-center gap-1 p-1 rounded-2xl mb-5 ${inset}`}>
-              <button
+              <button type="button"
                 onClick={() => setTradeType("buy")}
                 className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all
                   ${tradeType === "buy"
@@ -494,7 +495,7 @@ export function NFTDetail() {
               >
                 Buy
               </button>
-              <button
+              <button type="button"
                 onClick={() => setTradeType("sell")}
                 className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all
                   ${tradeType === "sell"
@@ -509,13 +510,13 @@ export function NFTDetail() {
             <div className="space-y-4">
               <div>
                 <div className="flex justify-between items-center mb-1.5">
-                  <label className="text-xs text-slate-400 dark:text-slate-500 block">
+                  <label htmlFor="trade-amount-input" className="text-xs text-slate-400 dark:text-slate-500 block">
                     {tradeType === "buy" ? "Amount to Buy" : "Shares to Sell"}
                   </label>
                   {tradeType === "buy" && (
                     <div className="flex bg-slate-100 dark:bg-white/5 rounded-lg p-0.5">
                       {["Shares", "USD", "SOL"].map(mode => (
-                        <button 
+                        <button type="button" 
                           key={mode}
                           onClick={() => {
                             setInputMode(mode as "Shares" | "USD" | "SOL");
@@ -531,6 +532,7 @@ export function NFTDetail() {
                 </div>
                 <div className="relative flex items-center">
                   <input
+                    id="trade-amount-input"
                     type="number"
                     placeholder="0.00"
                     value={inputValue}
@@ -542,14 +544,16 @@ export function NFTDetail() {
                       {inputMode}
                     </span>
                     <div className="flex flex-col border-l border-slate-200 dark:border-white/10 pl-2">
-                      <button 
+                      <button type="button"
                         onClick={handleIncrement}
+                        aria-label="Increase amount"
                         className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
                       >
                         <ChevronUp className="w-3.5 h-3.5" />
                       </button>
-                      <button 
+                      <button type="button"
                         onClick={handleDecrement}
+                        aria-label="Decrease amount"
                         className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
                       >
                         <ChevronDown className="w-3.5 h-3.5" />
@@ -559,7 +563,7 @@ export function NFTDetail() {
                 </div>
                 <div className="flex gap-1.5 mt-2">
                   {(inputMode === "Shares" ? [10, 50, 100, 500] : inputMode === "USD" ? [100, 500, 1000, 5000] : [1, 5, 10, 50]).map((amt) => (
-                    <button
+                    <button type="button"
                       key={amt}
                       onClick={() => setInputValue(amt.toString())}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${inset}
@@ -592,7 +596,7 @@ export function NFTDetail() {
                 </div>
               </div>
 
-              <button
+              <button type="button"
                 disabled={!inputNum || inputNum <= 0}
                 className={`w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
                   ${tradeType === "buy"

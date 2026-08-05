@@ -7,6 +7,8 @@ import { CandlLogo } from "../common/CandlLogo";
 import { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
+import { CreateNFTDialog } from "../wallet/CreateNFTDialog";
+import { ImportNFTDialog } from "../wallet/ImportNFTDialog";
 
 const WalletMultiButton = dynamic(
   async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
@@ -20,6 +22,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [isDark, setIsDark] = useState(true);
   const [isNavVisible, setIsNavVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const [createNFTOpen, setCreateNFTOpen] = useState(false);
+  const [importNFTOpen, setImportNFTOpen] = useState(false);
 
   const navLinks = connected
     ? [
@@ -72,6 +76,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen relative">
+      <CreateNFTDialog open={createNFTOpen} onOpenChange={setCreateNFTOpen} />
+      <ImportNFTDialog open={importNFTOpen} onOpenChange={setImportNFTOpen} />
+
       {/* ── Background layer ── */}
       <div className="fixed inset-0 -z-10 overflow-hidden">
         {/* Base */}
@@ -117,7 +124,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <nav className="hidden md:flex items-center gap-1">
               {navLinks.map(({ to, label }) => (
                 <Link key={to} href={to}>
-                  <button
+                  <button type="button"
                     className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-all duration-150
                       ${isActive(to)
                         ? "bg-emerald-500/15 dark:bg-emerald-400/15 text-emerald-700 dark:text-emerald-300"
@@ -132,10 +139,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
             {/* Right controls */}
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 onClick={() => setIsDark((d) => !d)}
                 aria-label="Toggle theme"
-                className="w-8 h-8 rounded-xl flex items-center justify-center transition-all outline-none focus:outline-none focus:ring-2 focus:ring-emerald-500/50
+                className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors outline-none focus:outline-none focus:ring-2 focus:ring-emerald-500/50
                   bg-emerald-100/70 dark:bg-white/10 hover:bg-emerald-200 dark:hover:bg-white/20
                   text-emerald-600 dark:text-emerald-300
                   border border-emerald-200/50 dark:border-white/10 hover:border-emerald-300 dark:hover:border-white/20"
@@ -145,10 +152,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
               {connected && (
                 <div className="hidden sm:flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCreateNFTOpen(true)}
+                    className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5"
+                  >
                     Create NFT
                   </Button>
-                  <Button variant="outline" size="sm" className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setImportNFTOpen(true)}
+                    className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5"
+                  >
                     Import NFT
                   </Button>
                 </div>
@@ -218,11 +235,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </p>
               <div className="flex items-center gap-4 pt-4">
                 <Link href="/marketplace">
-                  <button className="px-8 py-4 rounded-full font-bold bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_0_40px_rgba(16,185,129,0.3)] transition-all active:scale-95">
+                  <button type="button" className="px-8 py-4 rounded-full font-bold bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_0_40px_rgba(16,185,129,0.3)] transition active:scale-95">
                     START TRADING &rarr;
                   </button>
                 </Link>
-                <button className="px-8 py-4 rounded-full font-bold border-2 border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-all active:scale-95">
+                <button type="button" className="px-8 py-4 rounded-full font-bold border-2 border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition active:scale-95">
                   VIEW DOCS
                 </button>
               </div>
@@ -236,25 +253,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </p>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-emerald-400 dark:hover:border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-all">
+                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-emerald-400 dark:hover:border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors">
                   <MessageSquare className="w-6 h-6 text-[#5865F2] mb-3 transition-transform group-hover:-translate-y-1" />
                   <span className="font-bold text-slate-900 dark:text-white">Discord</span>
                   <span className="text-xs text-slate-500 mt-1">12k+ Active Traders</span>
                 </a>
                 
-                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-sky-400 dark:hover:border-sky-500/50 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-all">
+                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-sky-400 dark:hover:border-sky-500/50 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors">
                   <Hash className="w-6 h-6 text-[#1DA1F2] mb-3 transition-transform group-hover:-translate-y-1" />
                   <span className="font-bold text-slate-900 dark:text-white">Twitter (X)</span>
                   <span className="text-xs text-slate-500 mt-1">Protocol Announcements</span>
                 </a>
                 
-                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-amber-400 dark:hover:border-amber-500/50 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-all">
+                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-amber-400 dark:hover:border-amber-500/50 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
                   <BookOpen className="w-6 h-6 text-amber-500 mb-3 transition-transform group-hover:-translate-y-1" />
                   <span className="font-bold text-slate-900 dark:text-white">Documentation</span>
                   <span className="text-xs text-slate-500 mt-1">Smart Contract Specs</span>
                 </a>
                 
-                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-slate-400 dark:hover:border-slate-500/50 hover:bg-slate-50 dark:hover:bg-slate-500/10 transition-all">
+                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-slate-400 dark:hover:border-slate-500/50 hover:bg-slate-50 dark:hover:bg-slate-500/10 transition-colors">
                   <Code2 className="w-6 h-6 text-slate-800 dark:text-white mb-3 transition-transform group-hover:-translate-y-1" />
                   <span className="font-bold text-slate-900 dark:text-white">GitHub</span>
                   <span className="text-xs text-slate-500 mt-1">100% Open Source</span>

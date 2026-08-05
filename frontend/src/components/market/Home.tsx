@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { CandlSimulator } from "./CandlSimulator";
 import { TrendingUp, ArrowRight, Zap, Shield, Users, Briefcase, Rocket, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { nftData } from "@/lib/mockData";
@@ -89,9 +90,11 @@ export function Home() {
           {/* Card 1: Top Left */}
           <div className="absolute top-[5%] left-[5%] xl:left-[10%] animate-float rotate-[-6deg] opacity-70">
             <div className="w-40 h-48 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md rounded-2xl p-2 shadow-2xl border border-white/20">
-              <img 
-                src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400" 
-                alt="Mock NFT" 
+              <Image
+                src="/nfts/001.jpg"
+                alt="Mock NFT"
+                width={144}
+                height={128}
                 className="w-full h-32 object-cover rounded-xl"
               />
               <div className="mt-3 px-1 flex justify-between items-center">
@@ -104,9 +107,11 @@ export function Home() {
           {/* Card 2: Bottom Left */}
           <div className="absolute top-[60%] left-[2%] xl:left-[15%] animate-float-reverse rotate-[4deg] opacity-60">
             <div className="w-36 h-44 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md rounded-2xl p-2 shadow-2xl border border-white/20">
-              <img 
-                src="https://images.unsplash.com/photo-1634986666676-ec8fd927c23d?q=80&w=400" 
-                alt="Mock NFT" 
+              <Image
+                src="/nfts/004.jpg"
+                alt="Mock NFT"
+                width={128}
+                height={112}
                 className="w-full h-28 object-cover rounded-xl"
               />
               <div className="mt-3 px-1 flex justify-between items-center">
@@ -119,9 +124,11 @@ export function Home() {
           {/* Card 3: Top Right */}
           <div className="absolute top-[10%] right-[3%] xl:right-[12%] animate-float-slow rotate-[8deg] opacity-80">
             <div className="w-48 h-56 bg-white/60 dark:bg-slate-800/60 backdrop-blur-md rounded-2xl p-2.5 shadow-2xl border border-white/20">
-              <img 
-                src="https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?q=80&w=400" 
-                alt="Mock NFT" 
+              <Image
+                src="/nfts/005.jpg"
+                alt="Mock NFT"
+                width={172}
+                height={144}
                 className="w-full h-36 object-cover rounded-xl"
               />
               <div className="mt-3 px-1 flex justify-between items-center">
@@ -150,9 +157,9 @@ export function Home() {
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
             <Link href="/marketplace">
-              <button className="flex items-center gap-2 px-7 py-3 rounded-2xl text-base font-semibold
+              <button type="button" className="flex items-center gap-2 px-7 py-3 rounded-2xl text-base font-semibold
                 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600
-                text-white shadow-lg shadow-emerald-400/30 transition-all duration-200 active:scale-95">
+                text-white shadow-lg shadow-emerald-400/30 transition duration-200 active:scale-95">
                 Start Trading
                 <ArrowRight className="w-4 h-4" />
               </button>
@@ -186,7 +193,7 @@ export function Home() {
             <p className="text-sm text-slate-500 dark:text-slate-400">Trending NFTs in the last 24 hours</p>
           </div>
           <Link href="/marketplace">
-            <button className={`hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${glass} ${glassHover}`}>
+            <button type="button" className={`hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${glass} ${glassHover}`}>
               View All <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </Link>
@@ -195,12 +202,14 @@ export function Home() {
         <div className="grid md:grid-cols-3 gap-5">
           {topGainers.map((nft) => (
             <Link key={nft.id} href={`/market/${nft.id}`}>
-              <div className={`p-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-3xl shadow-xl transition-all duration-300 group cursor-pointer hover:-translate-y-1 hover:shadow-emerald-500/10 hover:border-emerald-400/40`}>
+              <div className={`p-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-3xl shadow-xl transition duration-300 group cursor-pointer hover:-translate-y-1 hover:shadow-emerald-500/10 hover:border-emerald-400/40`}>
                 <div className="relative aspect-[4/3] overflow-hidden rounded-2xl">
-                  <img
+                  <Image
                     src={nft.image}
                     alt={nft.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                    fill
+                    sizes="(min-width: 768px) 33vw, 100vw"
+                    className="object-cover group-hover:scale-105 transition-transform duration-700"
                   />
                   {/* Gloss overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-white/10" />
@@ -257,7 +266,7 @@ export function Home() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto mb-8">
           
           {/* Creator / Liquidity Provider Path */}
-          <div className="group relative overflow-hidden rounded-3xl p-8 md:p-10 flex flex-col backdrop-blur-xl bg-slate-900 border border-slate-700 shadow-2xl hover:shadow-[0_0_50px_rgba(16,185,129,0.15)] transition-all duration-500 hover:-translate-y-1">
+          <div className="group relative overflow-hidden rounded-3xl p-8 md:p-10 flex flex-col backdrop-blur-xl bg-slate-900 border border-slate-700 shadow-2xl hover:shadow-[0_0_50px_rgba(16,185,129,0.15)] transition duration-500 hover:-translate-y-1">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-emerald-500/20 to-transparent rounded-full blur-[60px] opacity-50 group-hover:opacity-100 transition-opacity duration-700" />
             <div className="relative z-10 flex-1 flex flex-col">
               <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-6">
@@ -267,14 +276,14 @@ export function Home() {
               <p className="text-slate-400 leading-relaxed text-sm mb-8 flex-1">
                 Have a blue-chip NFT gathering dust? Deposit it into a Candl Vault to instantly generate a liquid market and earn perpetual royalties on every single trade.
               </p>
-              <button className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all active:scale-95 flex items-center justify-center gap-2">
+              <button type="button" className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_0_30px_rgba(16,185,129,0.3)] transition active:scale-95 flex items-center justify-center gap-2">
                 Deposit Asset <ArrowRight className="w-5 h-5" />
               </button>
             </div>
           </div>
 
           {/* Trader Path */}
-          <div className="group relative overflow-hidden rounded-3xl p-8 md:p-10 flex flex-col backdrop-blur-xl bg-white/60 dark:bg-slate-900/40 border border-emerald-200/50 dark:border-white/10 shadow-xl hover:shadow-[0_0_50px_rgba(14,165,233,0.15)] transition-all duration-500 hover:-translate-y-1">
+          <div className="group relative overflow-hidden rounded-3xl p-8 md:p-10 flex flex-col backdrop-blur-xl bg-white/60 dark:bg-slate-900/40 border border-emerald-200/50 dark:border-white/10 shadow-xl hover:shadow-[0_0_50px_rgba(14,165,233,0.15)] transition duration-500 hover:-translate-y-1">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-sky-400/20 to-transparent rounded-full blur-[60px] opacity-50 group-hover:opacity-100 transition-opacity duration-700" />
             <div className="relative z-10 flex-1 flex flex-col">
               <div className="w-14 h-14 bg-sky-100 dark:bg-sky-500/20 rounded-2xl flex items-center justify-center mb-6">
@@ -284,7 +293,7 @@ export function Home() {
               <p className="text-slate-500 dark:text-slate-400 leading-relaxed text-sm mb-8 flex-1">
                 Don't get priced out of the best collections. Trade fractional shares of top-tier NFTs with instant execution, continuous liquidity, and zero slippage.
               </p>
-              <button className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold bg-sky-500 hover:bg-sky-400 text-white shadow-[0_0_30px_rgba(14,165,233,0.3)] transition-all active:scale-95 flex items-center justify-center gap-2">
+              <button type="button" className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold bg-sky-500 hover:bg-sky-400 text-white shadow-[0_0_30px_rgba(14,165,233,0.3)] transition active:scale-95 flex items-center justify-center gap-2">
                 Explore Markets <ArrowRight className="w-5 h-5" />
               </button>
             </div>
@@ -296,7 +305,7 @@ export function Home() {
         <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 py-6 px-8 rounded-2xl bg-white/40 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 backdrop-blur-md">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
             <ShieldCheck className="w-5 h-5 text-emerald-500" />
-            <span>Audited by Trail of Bits</span>
+            <span>Documentation-First Engineering</span>
           </div>
           <div className="hidden md:block w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
