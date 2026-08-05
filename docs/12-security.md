@@ -11,7 +11,7 @@
 **Mitigation**:
 - Strict integer arithmetic using checked math (`checked_add`, `checked_mul`, etc.).
 - Never use floats.
-- Ensure `VirtualSolReserve` and `RealSolReserve` invariant checks run at the end of every trade instruction.
+- Ensure `real_sol_reserves` always exactly equals `Reserve(outstanding_shares)` (docs/03-economics.md) via an invariant check at the end of every trade instruction.
 
 ### 2. Front-Running & Sandwich Attacks
 **Threat**: MEV searchers see a user's `buy` transaction in the mempool, buy shares before them (driving the price up), and sell immediately after the user buys.

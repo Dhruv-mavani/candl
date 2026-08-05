@@ -6,20 +6,14 @@
 
 ## Core Economic Concept
 
-Candl uses **bonding curves** to create continuous, automated markets for individual NFTs.
+Candl uses **cost-function based bonding curves** to create continuous, automated markets for individual NFTs.
 
-A bonding curve is a mathematical function that determines the price of an asset based on its supply. When someone buys, the supply decreases (or demand increases), and the price goes up. When someone sells, the supply increases (or demand decreases), and the price goes down.
+A bonding curve is a mathematical function that determines the total cost of an asset based on its circulating supply. When someone buys, the supply increases, and the price goes up. When someone sells, the supply decreases, and the price goes down.
 
 ```
 Buying  → Price increases
 Selling → Price decreases
 ```
-
-This is the same mechanism used by:
-
-- **Pump.fun** — for launching memecoins on Solana
-- **Uniswap** — for decentralized token trading on Ethereum
-- **Meteora** — for dynamic bonding curves on Solana
 
 Candl applies this mechanism to **individual NFTs** instead of fungible tokens.
 
@@ -44,77 +38,25 @@ Chocolate #4  = ₹20
 Chocolate #5  = ₹26
 ```
 
-The chocolates are identical. The price increases because **supply is decreasing**.
+The chocolates are identical. The price increases because **supply is increasing**.
 
-Now imagine someone returns chocolates. More chocolates available → price drops.
+Now imagine someone returns chocolates to the box. More chocolates available in the box (less in circulation) → price drops.
 
 That's a bonding curve.
 
 ---
 
-## The Constant Product Model
+## Reserve Is The Source Of Truth
 
-Candl V1 uses a **constant product bonding curve with virtual reserves**, the same model used by Pump.fun and derived from Uniswap's `x * y = k` formula.
+Every market has only one real reserve.
 
-### How It Works
+- The reserve contains **real SOL** deposited by buyers.
+- The reserve is the **only source of liquidity**.
+- There are **NO virtual reserves**.
+- There are **NO fake balances**.
+- The reserve always exists on-chain and is fully transparent.
 
-The bonding curve maintains two virtual reserves:
-
-```
-Virtual SOL Reserve  ×  Virtual Token Reserve  =  Constant (k)
-```
-
-When a user buys:
-
-1. User sends SOL to the program.
-2. SOL reserve increases.
-3. Token reserve must decrease to maintain the constant.
-4. The decrease in token reserve = tokens the user receives.
-5. Price (SOL per token) has increased.
-
-When a user sells:
-
-1. User sends tokens back to the program.
-2. Token reserve increases.
-3. SOL reserve must decrease to maintain the constant.
-4. The decrease in SOL reserve = SOL the user receives.
-5. Price (SOL per token) has decreased.
-
-### Example
-
-```
-Initial state:
-    Virtual SOL Reserve  = 100 SOL
-    Virtual Token Reserve = 1,000,000 shares
-    k = 100 × 1,000,000 = 100,000,000
-
-Alice buys with 20 SOL:
-    New SOL Reserve = 120 SOL
-    New Token Reserve = 100,000,000 / 120 = 833,333 shares
-    Alice receives = 1,000,000 - 833,333 = 166,667 shares
-    New price = 120 / 833,333 = 0.000144 SOL/share
-    (was 0.0001 SOL/share → price increased)
-
-Bob buys with 30 SOL:
-    New SOL Reserve = 150 SOL
-    New Token Reserve = 100,000,000 / 150 = 666,667 shares
-    Bob receives = 833,333 - 666,667 = 166,666 shares
-    Notice: Bob paid 30 SOL for ~166,666 shares
-    Alice paid 20 SOL for ~166,667 shares
-    Bob paid more per share (price went up)
-```
-
-### Why Virtual Reserves?
-
-Virtual reserves allow the curve to have a meaningful starting price even when the real reserve is empty.
-
-Without virtual reserves:
-- Initial price would be 0 or undefined.
-- The first buyer would get tokens for essentially nothing.
-
-With virtual reserves:
-- There's always a base price, even with no real SOL in the reserve.
-- The curve shapes the launch experience, making early buys affordable but not free.
+The reserve must always satisfy the bonding curve. Nobody may withdraw reserve funds except through selling Market Shares. The creator cannot access reserve funds, and the protocol cannot access reserve funds. Only bonding-curve trades may increase or decrease the reserve.
 
 ---
 
@@ -128,7 +70,14 @@ Market shares represent:
 - The ability to sell back to the curve at the current price.
 - Exposure to the market's price movement.
 
-Market shares are **not** transferable tokens. They exist only within the context of the Candl protocol and the specific market they belong to.
+**Market Shares are minted when users buy.**
+**Market Shares are burned when users sell.**
+
+- They are never pre-minted.
+- They are never allocated to the creator.
+- They are never allocated to the protocol.
+
+Circulating supply is entirely created by market activity.
 
 ### Why Shares Instead of the NFT?
 
@@ -143,17 +92,105 @@ Market shares make every NFT market accessible to any budget. You don't need to 
 
 ---
 
+## The Cost Function Model
+
+Candl uses a **cost-function based bonding curve**. The protocol defines a cost function `C(s)`.
+
+Where:
+- `s` = current circulating supply
+- `C(s)` = total SOL that should exist in the reserve when supply equals `s`.
+
+The reserve should always exactly equal:
+
+```
+Reserve = C(Current Supply)
+```
+
+This cost function becomes the single source of truth for pricing and reserve mechanics.
+
+### Final V1 Formulas
+
+For V1, Candl uses a specific quadratic bonding curve where the numbers are fully configurable via the protocol configuration. Rather than starting with the price, Candl strictly defines the **Reserve Formula** as the source of truth for the smart contract:
+
+```
+Reserve(S) = curve_alpha * S³ + curve_beta * S
+```
+
+From this, the UI can mathematically derive the spot price (the derivative of the reserve):
+
+```
+Price(S) = 3 * curve_alpha * S² + curve_beta
+```
+
+This architecture ensures the smart contract logic remains incredibly clean. If the market is growing too slowly, governance can simply tweak `curve_alpha`, and both the reserve and price will remain mathematically consistent automatically.
+
+When executing trades, the cost is calculated strictly from the Reserve function:
+
+```
+BuyCost = Reserve(S + Δ) - Reserve(S)
+
+SellRefund = Reserve(S) - Reserve(S - Δ)
+```
+
+### Protocol Configuration
+
+To ensure the protocol is future-proof and can be tuned via governance without requiring a smart contract upgrade, the curve parameters are **not hardcoded**. They are defined dynamically inside the `ProtocolConfig`:
+
+```rust
+pub struct ProtocolConfig {
+    pub curve_alpha: u64,
+    pub curve_beta: u64,
+    pub protocol_fee_bps: u16,
+    pub creator_fee_bps: u16,
+}
+```
+
+Every market in Candl uses this same mathematical model, but by storing `curve_alpha` (e.g., `0.001`) and `curve_beta` (e.g., `0.1`) in the config, the protocol retains maximum flexibility.
+
+---
+
+## Buying and Selling Mechanics
+
+### Buying
+
+When a buyer purchases Market Shares:
+
+1. Read current circulating supply.
+2. Decide the new supply after minting.
+3. Compute the cost:
+   `Cost = C(newSupply) - C(oldSupply)`
+4. Buyer pays that amount.
+5. Reserve increases by that amount.
+6. New Market Shares are minted.
+
+Every buy increases both reserve and supply.
+
+### Selling
+
+When a holder sells Market Shares:
+
+1. Read current circulating supply.
+2. Determine supply after burning.
+3. Compute the payout:
+   `Payout = C(oldSupply) - C(newSupply)`
+4. Burn Market Shares.
+5. Pay SOL from reserve.
+6. Reserve decreases accordingly.
+
+Every sell decreases both reserve and supply.
+
+---
+
 ## Price Mechanics
 
 ### Current Price
 
-The current price is derived from the bonding curve's reserves:
+The protocol internally derives a spot price from the bonding curve.
 
-```
-Price = Virtual SOL Reserve / Virtual Token Reserve
-```
+Conceptually:
+**Current Price = marginal cost of minting the next Market Share.**
 
-This price changes with every trade.
+The displayed price on the frontend is the price of purchasing the next infinitesimally small Market Share according to the bonding curve's cost function.
 
 ### Price Impact
 
@@ -164,7 +201,7 @@ Small buy  → Small price increase
 Large buy  → Large price increase
 ```
 
-The price impact is a natural property of the constant product formula. Traders should always check the estimated price impact before executing a trade.
+The price impact is a natural property of the bonding curve. Traders should always check the estimated price impact before executing a trade.
 
 ### Slippage
 
@@ -172,64 +209,39 @@ Slippage is the difference between the expected price and the actual execution p
 
 Candl supports **slippage tolerance** — the maximum acceptable slippage before a transaction is rejected.
 
-```
-Expected price: 0.15 SOL/share
-Slippage tolerance: 1%
-Maximum acceptable price: 0.1515 SOL/share
-If actual price > 0.1515 → Transaction reverts
-```
-
 ---
 
 ## Fee Structure
 
-Every trade on Candl incurs fees. Fees serve two purposes:
+Every trade on Candl incurs a fee. 
 
-1. **Protocol sustainability** — Fund development and infrastructure.
-2. **Creator incentive** — Reward creators for every trade, not just the first sale.
+Candl uses a **fixed percentage-based fee model**, not flat fees. Every trade (buy and sell) incurs a total fee of **1.25%**. 
 
 ### Fee Distribution
 
-```
-Trade Fee (e.g., 2% of transaction)
-├── Protocol Fee (e.g., 1%)  → Protocol Treasury
-└── Creator Royalty (e.g., 1%) → Creator Wallet
-```
+The fee is split as follows:
+- **0.95%** → Candl Protocol Treasury
+- **0.30%** → Market Creator
 
-Fee percentages are configurable per market (within protocol-defined bounds) and are enforced on-chain.
+These percentages apply uniformly across all markets. Creators cannot choose or customize their fee percentage. Every market on Candl follows the exact same fee structure to ensure consistency, predictability, and a uniform trading experience.
+
+Percentage-based fees scale naturally with trade size and avoid unfairly penalizing small trades.
+
+Fee values are stored in a configurable protocol configuration account (e.g., `ProtocolConfig`) so governance can update them in future protocol upgrades without changing the core trading logic.
+
+### Incentive Structure
+
+- **The protocol fee** (0.95%) funds protocol development, infrastructure, maintenance, and future ecosystem growth.
+- **The creator fee** (0.30%) rewards asset owners for committing their asset, creating liquidity markets, and attracting trading activity, aligning incentives between creators and the protocol.
 
 ### When Fees Are Collected
 
 Fees are collected on both **buys and sells**:
 
-- **Buy**: Fee is deducted from the SOL input before the bonding curve calculation.
-- **Sell**: Fee is deducted from the SOL output after the bonding curve calculation.
+- **Buy**: Fee is added on top of the SOL required to purchase the shares.
+- **Sell**: Fee is deducted from the SOL output returned from the curve.
 
-This ensures the reserve is never reduced by fees — fees come from the trader's side.
-
----
-
-## Reserve Management
-
-The reserve is the SOL balance held by the bonding curve program. It represents the total liquidity backing the market.
-
-### Reserve Rules
-
-1. **The reserve only changes via trades.** Buying adds to the reserve. Selling removes from the reserve.
-2. **Fees are taken from the trader, not the reserve.** The reserve is always fully backed.
-3. **The reserve is on-chain and verifiable.** Anyone can check the exact SOL balance at any time.
-4. **No one can withdraw from the reserve except through selling shares.** Not even the creator. Not even the protocol.
-
-### Reserve Transparency
-
-Every market page displays:
-
-- Current reserve balance (SOL)
-- Total shares outstanding
-- Price per share
-- Reserve-to-share ratio
-
-This gives traders complete visibility into the market's backing.
+This ensures the reserve is never reduced by fees — fees always come from the trader's side, and the reserve remains fully backed by `C(s)`.
 
 ---
 
@@ -237,25 +249,22 @@ This gives traders complete visibility into the market's backing.
 
 ### Creation
 
-When a creator creates a market:
+When a market is created:
 
-```
-Creator deposits NFT
-    → Market account created on-chain
-    → Bonding curve initialized with virtual reserves
-    → Market duration set
-    → Market opens for trading
-```
-
-The creator does not deposit SOL. The initial reserve is virtual only.
+- NFT is locked.
+- Market metadata is created.
+- Supply starts at exactly zero.
+- Reserve starts at exactly zero.
+- No virtual liquidity exists.
+- No shares exist until the first purchase.
 
 ### Active Trading
 
 During the active phase:
 
 ```
-Buyers send SOL → Receive shares → Reserve grows → Price rises
-Sellers return shares → Receive SOL → Reserve shrinks → Price falls
+Buyers send SOL → Cost Function is evaluated → Reserve grows → Price rises
+Sellers return shares → Cost Function is evaluated → Reserve shrinks → Price falls
 ```
 
 Fees are collected on every trade and distributed to the protocol treasury and creator.
@@ -287,7 +296,7 @@ Market state becomes "settled"
 - Instant buy/sell against a mathematically deterministic curve.
 - Transparent pricing — the bonding curve is the same for everyone.
 - No reliance on counterparties — the curve is always available.
-- Clear reserve backing — every share is backed by real SOL.
+- Clear reserve backing — every share is backed by real SOL. There is no fake liquidity.
 
 ### For The Protocol
 
@@ -297,11 +306,11 @@ Market state becomes "settled"
 
 ---
 
-## Bonding Curve Types (Future)
+## Future Curves
 
-V1 uses a single curve type: constant product with virtual reserves.
+The protocol architecture is designed to support different cost functions in the future.
 
-Future versions may support:
+Examples of future cost function shapes:
 
 | Curve Type | Behavior | Use Case |
 |---|---|---|
@@ -311,7 +320,7 @@ Future versions may support:
 | **Logarithmic** | Fast start, slow growth | Markets that stabilize early |
 | **Custom** | Creator-defined parameters | Advanced use cases |
 
-These are V2+ features and are documented in `16-future-ideas.md`.
+V1 will initially use one default cost function. The exact mathematical function will be finalized after simulation and economic testing.
 
 ---
 
@@ -319,13 +328,11 @@ These are V2+ features and are documented in `16-future-ideas.md`.
 
 ### Reserve Drain
 
-If many holders sell simultaneously, the reserve can be significantly reduced. This is not a bug — it's how bonding curves work. Later sellers receive less SOL per share than earlier sellers.
-
-**Mitigation**: The constant product formula naturally increases slippage for large sells, discouraging rapid liquidation.
+If many holders sell simultaneously, the reserve will shrink rapidly. This is not a bug — it's how bonding curves work. Because the reserve exactly matches `C(s)`, there is always enough SOL in the reserve to pay out every single shareholder until supply reaches zero. Later sellers simply receive less SOL per share than earlier sellers.
 
 ### Low Trading Volume
 
-A market with no trades generates no candles, no fees, and no creator royalties. The protocol depends on trading activity.
+A market with no trades generates no volume, no fees, and no creator royalties. The protocol depends on trading activity.
 
 **Mitigation**: Market duration creates urgency. Discovery features (trending, new, hot) drive attention to active markets.
 
@@ -333,10 +340,10 @@ A market with no trades generates no candles, no fees, and no creator royalties.
 
 A malicious actor could observe a pending buy transaction and submit their own buy first, profiting from the price increase.
 
-**Mitigation**: Slippage tolerance limits the damage. On-chain priority mechanisms (Solana's fee prioritization) reduce but don't eliminate this risk. Future versions may explore commit-reveal schemes or MEV protection.
+**Mitigation**: Slippage tolerance limits the damage. On-chain priority mechanisms (Solana's fee prioritization) reduce but don't eliminate this risk.
 
 ### Price Manipulation
 
 A well-capitalized actor could buy a large amount to inflate the price, then sell.
 
-**Mitigation**: Price impact is transparent and visible before execution. The constant product formula makes large price movements increasingly expensive. All trades are on-chain and auditable.
+**Mitigation**: Price impact is transparent and visible before execution. The cost function shape makes extreme price movements increasingly expensive. All trades are on-chain and auditable.

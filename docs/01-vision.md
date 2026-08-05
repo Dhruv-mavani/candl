@@ -82,7 +82,7 @@ The on-chain program handles:
 
 - Market creation (NFT deposit, curve configuration, duration)
 - Trading (buy shares, sell shares)
-- Bonding curve math (constant product with virtual reserves)
+- Bonding curve math (cubic reserve function, real reserves only -- see docs/03-economics.md)
 - Reserve management (SOL accounting)
 - Fee collection (protocol fee, creator royalty)
 - Market state (active, settled, extended)

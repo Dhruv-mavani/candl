@@ -281,7 +281,7 @@ V1 is the smallest product that proves the protocol works. It includes:
 - Create market (deposit NFT, configure bonding curve, set duration)
 - Buy shares (instant purchase against the bonding curve)
 - Sell shares (instant sale back to the bonding curve)
-- Bonding curve engine (constant product with virtual reserves)
+- Bonding curve engine (cubic reserve function, real reserves only -- no virtual reserves; see docs/03-economics.md)
 - NFT market page (price, chart, analytics, trade history)
 - Live candlestick chart (generated from on-chain trade events)
 - Wallet connection (Phantom, Solflare, Backpack)
@@ -294,7 +294,7 @@ Nothing more. V1 proves that the concept works and that the architecture support
 
 **Q27. What are NOT V1 goals?**
 
-- Multiple bonding curve types (V1 uses one curve: constant product with virtual reserves)
+- Multiple bonding curve types (V1 uses one curve: the cubic reserve function, real reserves only)
 - Creator dashboard
 - Portfolio page
 - Price alerts or notifications

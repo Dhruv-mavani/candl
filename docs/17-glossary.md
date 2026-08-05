@@ -22,9 +22,7 @@
 
 **Redemption**: The process of exchanging Market Shares for a proportional amount of SOL from the vault during the `Settling` phase.
 
-**Reserve (Real)**: The actual SOL balance held in the market's vault, collected from trades.
-
-**Reserve (Virtual)**: The theoretical balances (Virtual SOL and Virtual Tokens) used purely by the bonding curve math to determine the current price.
+**Reserve**: The actual SOL balance held in a market's vault. Candl has no virtual reserves -- the reserve always exactly equals `Reserve(outstanding_shares)`, the cubic cost function from docs/03-economics.md.
 
 **Settlement**: The final phase of a market's lifecycle. Active trading ceases, shareholders redeem their shares for SOL, the creator claims royalties, and the NFT is eventually returned.
 

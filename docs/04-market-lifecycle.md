@@ -26,12 +26,13 @@ A creator deposits an NFT and configures the market parameters.
 Creator
     │
     ├── Deposits NFT into Candl program
-    ├── Configures bonding curve parameters
-    │   ├── Virtual SOL reserve (initial)
-    │   ├── Virtual token reserve (total shares)
-    │   └── Fee configuration (within protocol bounds)
     ├── Sets market duration
     └── Signs transaction
+
+The bonding curve (curve_alpha, curve_beta) and fee split are global,
+protocol-wide values read from ProtocolConfig at creation time -- not
+something the creator configures per market (docs/03-economics.md,
+docs/06-smart-contracts.md).
     
     ↓
 
@@ -50,10 +51,9 @@ Market Account Created (on-chain)
 | Parameter | Description | Constraints |
 |---|---|---|
 | **NFT Mint** | The NFT to create a market for | Must be a valid Metaplex NFT owned by the creator |
-| **Virtual SOL Reserve** | Initial virtual SOL for pricing | Protocol-defined minimum |
-| **Virtual Token Reserve** | Total market shares available | Protocol-defined range |
-| **Market Duration** | How long the market runs | Minimum and maximum bounds |
-| **Creator Royalty** | % of each trade sent to creator | Within protocol-defined bounds |
+| **Market Duration** | How long the market runs | Minimum and maximum bounds (docs/06-smart-contracts.md) |
+
+Fees are not a creator-chosen parameter -- every market uses the same protocol-wide split (docs/03-economics.md: 0.95% protocol / 0.30% creator), copied from `ProtocolConfig` at creation time.
 
 ### Rules
 

@@ -12,7 +12,7 @@
 ## Phase 1: V1 Protocol (The Core)
 - Develop the Anchor program.
 - Implement Market Creation, Buy, Sell, Settle, Redeem.
-- Implement Constant Product Bonding Curve with virtual reserves.
+- Implement the cubic reserve bonding curve (real reserves only -- see docs/03-economics.md).
 - Write comprehensive Anchor tests.
 - **Deliverable**: Auditable on-chain program deployed to Devnet.
 
