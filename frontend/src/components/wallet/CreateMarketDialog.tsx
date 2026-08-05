@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PublicKey } from "@solana/web3.js";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { useConnection } from "@solana/wallet-adapter-react";
+import { Loader2, CheckCircle2, Info } from "lucide-react";
 
 import { useCandlProgram, createMarket } from "@/lib/candl-program";
 import { useNFTStore, type OwnedNFT } from "@/lib/nft-store";
@@ -37,11 +38,17 @@ export function CreateMarketDialog({
 }) {
   const program = useCandlProgram();
   const removeNFT = useNFTStore((s) => s.removeNFT);
+  const { connection } = useConnection();
 
   const [durationDays, setDurationDays] = useState(DEFAULT_DURATION_DAYS);
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ signature: string; market: string } | null>(null);
+  const [rentExemptSol, setRentExemptSol] = useState<number | null>(null);
+
+  useEffect(() => {
+    connection.getMinimumBalanceForRentExemption(0).then((lamports) => setRentExemptSol(lamports / 1e9));
+  }, [connection]);
 
   const resetForm = () => {
     setDurationDays(DEFAULT_DURATION_DAYS);
@@ -113,6 +120,16 @@ export function CreateMarketDialog({
           </div>
         ) : (
           <div className="grid gap-4">
+            <div className="flex items-start gap-2 rounded-lg bg-sky-50 dark:bg-sky-400/[0.07] border border-sky-200/60 dark:border-sky-400/15 p-3">
+              <Info className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-sky-700 dark:text-sky-300">
+                Creating a market requires a one-time deposit of{" "}
+                <strong>{rentExemptSol !== null ? `${rentExemptSol} SOL` : "a small amount of SOL"}</strong> --
+                the rent-exempt minimum Solana requires for the market&apos;s reserve account. This is
+                fully refunded once the market fully settles and every share has been redeemed.
+              </p>
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="duration">Market duration (days)</Label>
               <Input
