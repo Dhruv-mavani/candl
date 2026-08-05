@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bonding Curve Simulator</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script>
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            alert("ERROR: " + msg + "\nLine: " + lineNo);
+            return false;
+        };
+    </script>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>Bonding Curve Simulator</h1>
+            <p>Understand how supply and reserve affect token price interactively</p>
+        </header>
+
+        <div class="main-content">
+            <div class="chart-container glass-panel" id="chartContainer" style="position: relative;">
+            </div>
+            
+            <div class="controls-container">
+                <div class="stats-panel glass-panel">
+                    <div class="stat-item">
+                        <span class="stat-label">Current Price</span>
+                        <span class="stat-value" id="currentPrice">0.000 SOL</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Current Supply</span>
+                        <span class="stat-value" id="currentSupply">0 Shares</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Total Reserve</span>
+                        <span class="stat-value" id="currentReserve">0.000 SOL</span>
+                    </div>
+                </div>
+
+                <div class="bot-panel glass-panel">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                        <h3 style="margin: 0; font-size: 16px; color: #f8fafc;">Chaos Testing</h3>
+                        <span id="simStatus" style="font-size: 12px; color: #94a3b8; background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px;">Idle</span>
+                    </div>
+                    <p style="font-size: 13px; color: #94a3b8; margin-bottom: 15px; line-height: 1.5;">Simulate 100,000 bots trading rapidly for 2 minutes to test bonding curve limits and catch edge cases (e.g. negative supply, precision errors).</p>
+                    
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btnStartSim" class="btn-action buy-mode" style="flex: 1; width: auto; background: linear-gradient(to right, #a855f7, #6366f1); border: none; box-shadow: 0 4px 14px rgba(168,85,247,0.3);">Start 2-Min Simulation</button>
+                        <button id="btnResetSim" class="btn-action" style="flex: 0 0 auto; width: auto; padding: 0 20px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white;">Reset</button>
+                    </div>
+                    
+                    <div id="simStats" class="last-action" style="display: none; margin-top: 15px; border-color: rgba(168,85,247,0.3); background: rgba(168,85,247,0.05);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="color: #cbd5e1;">Active Bots:</span>
+                            <strong id="simBotCount" style="color: #f8fafc;">0</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span style="color: #cbd5e1;">Total Trades:</span>
+                            <strong id="simTradeCount" style="color: #f8fafc;">0</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: #cbd5e1;">Time Left:</span>
+                            <strong id="simTimeLeft" style="color: #a855f7;">120s</strong>
+                        </div>
+                        <div id="simLog" style="color: #ef4444; font-size: 11px; margin-top: 10px; word-break: break-all; max-height: 80px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
