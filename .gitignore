@@ -10,3 +10,6 @@ out/
 build/
 coverage/
 *.log
+.claude/
+.agents/
+skills-lock.json
