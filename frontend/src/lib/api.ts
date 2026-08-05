@@ -26,6 +26,24 @@ export interface RealMarket {
   volume: number;
 }
 
+export interface RealCandle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface RealMarketStats {
+  volume24h: number;
+  priceChange24h: number;
+  holders: number;
+}
+
+/** Matches docs/10-api.md's allowed candle resolutions. */
+export type CandleResolution = "1m" | "5m" | "15m" | "1h" | "1d";
+
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`);
   if (!res.ok) throw new Error(`Backend request failed: ${res.status} ${res.statusText}`);
@@ -37,4 +55,16 @@ export const swrFetcher = <T>(path: string) => fetchJson<T>(path);
 
 export function getMarkets(): Promise<RealMarket[]> {
   return fetchJson<RealMarket[]>("/api/v1/markets");
+}
+
+export function getMarket(mint: string): Promise<RealMarket> {
+  return fetchJson<RealMarket>(`/api/v1/markets/${mint}`);
+}
+
+export function getCandles(mint: string, resolution: CandleResolution): Promise<RealCandle[]> {
+  return fetchJson<RealCandle[]>(`/api/v1/markets/${mint}/candles?resolution=${resolution}`);
+}
+
+export function getMarketStats(mint: string): Promise<RealMarketStats> {
+  return fetchJson<RealMarketStats>(`/api/v1/markets/${mint}/stats`);
 }

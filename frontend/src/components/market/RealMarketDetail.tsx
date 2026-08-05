@@ -1,0 +1,431 @@
+"use client";
+import { useState, useEffect, useRef, useMemo } from "react";
+import Link from "next/link";
+import useSWR from "swr";
+import { ArrowLeft, TrendingUp, DollarSign, BarChart3, Droplets, AlertTriangle, Loader2, CheckCircle2 } from "lucide-react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
+import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineStyle } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, UTCTimestamp } from "lightweight-charts";
+
+import { getMarket, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
+import { useCandlProgram, deriveCandlPdas, deriveTraderPosition, quoteTrade, quotedTotal, buy, sell, type TradeQuote } from "@/lib/candl-program";
+import { getErrorMessage, isWalletRejection } from "@/lib/wallet-errors";
+
+const glass =
+  "bg-white/50 dark:bg-white/[0.05] backdrop-blur-xl border border-white/70 dark:border-white/10 shadow-[0_8px_32px_rgba(16,185,129,0.07)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.3)]";
+const inset =
+  "bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/[0.07] rounded-xl";
+
+const RESOLUTIONS: { key: CandleResolution; label: string }[] = [
+  { key: "1m", label: "1m" },
+  { key: "5m", label: "5m" },
+  { key: "15m", label: "15m" },
+  { key: "1h", label: "1h" },
+  { key: "1d", label: "1d" },
+];
+
+function lamportsToSol(value: string | number | null | undefined) {
+  return value ? Number(value) / 1e9 : 0;
+}
+
+function NotFound() {
+  return (
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-16 text-center">
+      <h2 className="text-2xl font-bold mb-4">Market not found</h2>
+      <Link href="/marketplace">
+        <button type="button" className="px-5 py-2.5 rounded-xl bg-emerald-500 text-white font-medium">
+          Back to Marketplace
+        </button>
+      </Link>
+    </div>
+  );
+}
+
+export function RealMarketDetail({ mint }: { mint: string }) {
+  const [resolution, setResolution] = useState<CandleResolution>("1h");
+  const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
+  const [shareInput, setShareInput] = useState("");
+
+  const { publicKey } = useWallet();
+  const program = useCandlProgram();
+  const nftMint = useMemo(() => new PublicKey(mint), [mint]);
+
+  // Tracked in state (not read directly during render) so expiry checks stay pure -- market durations are measured in days, so a 30s tick is plenty fresh.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const interval = setInterval(tick, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const { data: market, error: marketError, isLoading: marketLoading, mutate: refreshMarket } = useSWR<RealMarket>(
+    `/api/v1/markets/${mint}`,
+    () => getMarket(mint),
+    { refreshInterval: 10_000 }
+  );
+
+  const { data: stats } = useSWR(
+    market ? `/api/v1/markets/${mint}/stats` : null,
+    () => getMarketStats(mint),
+    { refreshInterval: 15_000 }
+  );
+
+  const { data: candles, mutate: refreshCandles } = useSWR(
+    market ? `/api/v1/markets/${mint}/candles?resolution=${resolution}` : null,
+    () => getCandles(mint, resolution),
+    { refreshInterval: 10_000 }
+  );
+
+  const creator = useMemo(() => (market ? new PublicKey(market.creator) : null), [market]);
+
+  const { data: ownedShares, mutate: refreshPosition } = useSWR(
+    program && publicKey && market ? `position:${mint}:${publicKey.toBase58()}` : null,
+    async () => {
+      if (!program || !publicKey) return 0;
+      const { market: marketPda } = deriveCandlPdas(nftMint);
+      const positionPda = deriveTraderPosition(marketPda, publicKey);
+      const position = await program.account.traderPosition.fetchNullable(positionPda);
+      return position ? Number(position.shares) : 0;
+    }
+  );
+
+  const shareAmount = parseInt(shareInput, 10) || 0;
+  const [quote, setQuote] = useState<TradeQuote | null>(null);
+  const [quoting, setQuoting] = useState(false);
+
+  useEffect(() => {
+    const timeout = setTimeout(async () => {
+      if (!program || !publicKey || !creator || shareAmount <= 0) {
+        setQuote(null);
+        return;
+      }
+      setQuoting(true);
+      try {
+        const q = await quoteTrade({ program, trader: publicKey, nftMint, creator, shareAmount, side: tradeType });
+        setQuote(q);
+      } catch {
+        // No funds/shares for a real preview yet -- the naive spot-price estimate below covers it.
+        setQuote(null);
+      } finally {
+        setQuoting(false);
+      }
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [program, publicKey, creator, shareAmount, tradeType, nftMint]);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSignature, setSubmitSignature] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    setSubmitError(null);
+    setSubmitSignature(null);
+    if (!program || !publicKey || !creator) {
+      setSubmitError("Connect your wallet first.");
+      return;
+    }
+    if (shareAmount <= 0) return;
+
+    setSubmitting(true);
+    try {
+      const freshQuote = await quoteTrade({ program, trader: publicKey, nftMint, creator, shareAmount, side: tradeType });
+      const { signature } =
+        tradeType === "buy"
+          ? await buy({ program, trader: publicKey, nftMint, creator, shareAmount, quote: freshQuote })
+          : await sell({ program, trader: publicKey, nftMint, creator, shareAmount, quote: freshQuote });
+
+      setSubmitSignature(signature);
+      setShareInput("");
+      setQuote(null);
+      refreshMarket();
+      refreshCandles();
+      refreshPosition();
+    } catch (err) {
+      if (!isWalletRejection(err)) console.error(`${tradeType} failed:`, err);
+      setSubmitError(getErrorMessage(err, `Failed to ${tradeType} shares.`));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+    const isDark = document.documentElement.classList.contains("dark");
+
+    const chart = createChart(chartContainerRef.current, {
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: isDark ? "#64748b" : "#94a3b8" },
+      grid: {
+        vertLines: { color: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" },
+        horzLines: { color: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" },
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: 420,
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" },
+      rightPriceScale: { borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)", autoScale: true },
+    });
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: "#10b981", downColor: "#f43f5e", borderVisible: false, wickUpColor: "#10b981", wickDownColor: "#f43f5e",
+    });
+    const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "volume" });
+    chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+
+    chartRef.current = chart;
+    seriesRef.current = candleSeries;
+    volumeSeriesRef.current = volumeSeries;
+
+    const handleResize = () => {
+      if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      chart.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!seriesRef.current || !volumeSeriesRef.current || !candles || candles.length === 0) return;
+    seriesRef.current.setData(candles.map((c) => ({ ...c, time: c.time as UTCTimestamp })));
+    volumeSeriesRef.current.setData(
+      candles.map((c) => ({
+        time: c.time as UTCTimestamp,
+        value: c.volume,
+        color: c.close >= c.open ? "rgba(16, 185, 129, 0.3)" : "rgba(244, 63, 94, 0.3)",
+      }))
+    );
+    const last = candles[candles.length - 1];
+    seriesRef.current.createPriceLine({
+      price: last.close,
+      color: last.close >= last.open ? "#10b981" : "#f43f5e",
+      lineWidth: 1,
+      lineStyle: LineStyle.Dotted,
+      axisLabelVisible: true,
+      title: "",
+    });
+    chartRef.current?.timeScale().fitContent();
+  }, [candles]);
+
+  if (marketLoading) {
+    return (
+      <div className={`w-full px-4 sm:px-6 lg:px-8 py-16 text-center ${glass} m-4 rounded-2xl`}>
+        <Loader2 className="w-6 h-6 mx-auto animate-spin text-emerald-500" />
+      </div>
+    );
+  }
+
+  if (marketError || !market) return <NotFound />;
+
+  const priceSOL = lamportsToSol(market.currentPrice);
+  const reserveSOL = lamportsToSol(market.reserveSol);
+  const estimateSOL = quote ? lamportsToSol(quotedTotal(quote, tradeType).toString()) : shareAmount * priceSOL;
+
+  const isActive = market.state === "ACTIVE";
+  const isExpired = now !== null && new Date(market.expiresAt).getTime() < now;
+  const canTrade = isActive && !isExpired;
+  const insufficientShares = tradeType === "sell" && shareAmount > (ownedShares ?? 0);
+
+  return (
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
+      <Link href="/marketplace">
+        <button type="button" className="flex items-center gap-1.5 mb-6 text-sm text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          Back to Marketplace
+        </button>
+      </Link>
+
+      <div className="grid lg:grid-cols-3 gap-5">
+        {/* ── Left: NFT info ── */}
+        <div className="lg:col-span-1 space-y-5">
+          <div className={`rounded-2xl overflow-hidden ${glass}`}>
+            <div className="relative aspect-square bg-slate-100 dark:bg-slate-900">
+              {market.metadata?.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={market.metadata.imageUrl} alt={market.metadata.name ?? "NFT"} className="w-full h-full object-cover" />
+              ) : null}
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">Live on devnet</div>
+                <h1 className="text-xl font-bold">{market.metadata?.name ?? "Unnamed Market"}</h1>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "24h Volume", value: `${(stats ? lamportsToSol(stats.volume24h) : 0).toFixed(3)} SOL` },
+                  { label: "24h Change", value: `${stats && stats.priceChange24h >= 0 ? "+" : ""}${(stats?.priceChange24h ?? 0).toFixed(2)}%` },
+                  { label: "Outstanding Shares", value: market.outstandingShares ?? "0" },
+                  { label: "Holders", value: (stats?.holders ?? 0).toString() },
+                ].map(({ label, value }) => (
+                  <div key={label} className={`p-3 ${inset}`}>
+                    <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{label}</div>
+                    <div className="font-semibold text-sm">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className={`p-4 ${inset}`}>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 mb-2">
+                  <Droplets className="w-3.5 h-3.5" />
+                  Reserve Liquidity
+                </div>
+                <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{reserveSOL.toFixed(4)} SOL</span>
+                <span className="text-xs text-slate-400 ml-1.5">locked in curve</span>
+              </div>
+
+              {!canTrade && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-400/[0.07] border border-amber-200/60 dark:border-amber-400/15 text-xs text-amber-700 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  {isExpired ? "This market has expired." : `Market is ${market.state.toLowerCase()} -- trading is closed.`}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right: Chart + Trading ── */}
+        <div className="lg:col-span-2 space-y-5">
+          <div className={`rounded-2xl p-5 ${glass}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                <span className="font-semibold text-sm">{market.metadata?.name ?? "Market"}/SOL</span>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-mono">
+                {RESOLUTIONS.map(({ key, label }) => (
+                  <button type="button"
+                    key={key}
+                    onClick={() => setResolution(key)}
+                    className={`px-2 py-0.5 rounded transition-all ${resolution === key ? "text-emerald-500 font-semibold" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-baseline gap-3 mb-3">
+              <span className="text-3xl font-bold text-amber-500 dark:text-amber-400">{priceSOL.toFixed(6)} SOL</span>
+            </div>
+
+            <div ref={chartContainerRef} style={{ width: "100%", height: "420px" }} />
+
+            {(!candles || candles.length === 0) && (
+              <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-4">No trades yet on this market.</p>
+            )}
+          </div>
+
+          {/* Trading Panel */}
+          <div className={`rounded-2xl p-5 ${glass}`}>
+            <div className="flex items-center gap-2 mb-5">
+              <DollarSign className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+              <span className="font-semibold">Trade Shares</span>
+              {ownedShares ? (
+                <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">You own {ownedShares} shares</span>
+              ) : null}
+            </div>
+
+            <div className={`flex items-center gap-1 p-1 rounded-2xl mb-5 ${inset}`}>
+              <button type="button"
+                onClick={() => setTradeType("buy")}
+                className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "buy" ? "bg-gradient-to-r from-emerald-400 to-teal-500 text-white shadow-md shadow-emerald-400/25" : "text-slate-500 dark:text-slate-400"}`}
+              >
+                Buy
+              </button>
+              <button type="button"
+                onClick={() => setTradeType("sell")}
+                className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "sell" ? "bg-gradient-to-r from-rose-400 to-pink-500 text-white shadow-md shadow-rose-400/25" : "text-slate-500 dark:text-slate-400"}`}
+              >
+                Sell
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="real-trade-shares" className="text-xs text-slate-400 dark:text-slate-500 block mb-1.5">
+                  {tradeType === "buy" ? "Shares to buy" : "Shares to sell"}
+                </label>
+                <input
+                  id="real-trade-shares"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="0"
+                  value={shareInput}
+                  onChange={(e) => setShareInput(e.target.value)}
+                  disabled={!canTrade}
+                  className={`w-full h-12 px-4 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                />
+              </div>
+
+              <div className={`p-4 space-y-2 ${inset}`}>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400 dark:text-slate-500">Spot price</span>
+                  <span className="font-medium">{priceSOL.toFixed(6)} SOL</span>
+                </div>
+                <div className="border-t border-black/5 dark:border-white/5 pt-2 flex justify-between items-center">
+                  <span className="font-semibold text-sm">
+                    {tradeType === "buy" ? "Total Cost" : "You Receive"} {quoting && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}
+                  </span>
+                  <span className={`text-lg font-bold ${tradeType === "buy" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                    {estimateSOL > 0 ? estimateSOL.toFixed(6) : "0"} SOL
+                  </span>
+                </div>
+                {!quote && shareAmount > 0 && (
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">Estimate from current spot price -- exact cost is confirmed on submit.</p>
+                )}
+              </div>
+
+              {insufficientShares && (
+                <p className="text-sm text-destructive">You only own {ownedShares ?? 0} shares.</p>
+              )}
+              {submitError && <p className="text-sm text-destructive">{submitError}</p>}
+              {submitSignature && (
+                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <a
+                    href={`https://explorer.solana.com/tx/${submitSignature}?cluster=devnet`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline"
+                  >
+                    Trade confirmed -- view on Solana Explorer
+                  </a>
+                </div>
+              )}
+
+              <button type="button"
+                onClick={handleSubmit}
+                disabled={!canTrade || !program || submitting || shareAmount <= 0 || insufficientShares}
+                className={`w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
+                  ${tradeType === "buy"
+                    ? "bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 shadow-lg shadow-emerald-400/25"
+                    : "bg-gradient-to-r from-rose-400 to-pink-500 hover:from-rose-500 hover:to-pink-600 shadow-lg shadow-rose-400/25"
+                  }`}
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
+                {!program ? "Connect Wallet" : submitting ? "Confirming…" : tradeType === "buy" ? "Buy Shares" : "Sell Shares"}
+              </button>
+
+              <div className="bg-sky-50/80 dark:bg-sky-400/[0.07] border border-sky-200/60 dark:border-sky-400/15 rounded-xl p-3">
+                <p className="text-xs text-sky-700 dark:text-sky-300">
+                  <TrendingUp className="inline w-3 h-3 mr-1" />
+                  Fees are {(market.feeProtocolBps + market.feeCreatorBps) / 100}% per trade ({market.feeProtocolBps / 100}% protocol / {market.feeCreatorBps / 100}% creator).
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -24,10 +24,8 @@ function RealMarketCard({ market }: { market: RealMarket }) {
         : "bg-slate-500/85";
 
   return (
-    <a
-      href={`https://explorer.solana.com/address/${market.pubkey}?cluster=devnet`}
-      target="_blank"
-      rel="noopener noreferrer"
+    <Link
+      href={`/market/${market.nftMint}`}
       className="p-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-3xl shadow-xl transition duration-300 group cursor-pointer hover:-translate-y-1 hover:shadow-emerald-500/10 hover:border-emerald-400/40 block"
     >
       <div className="relative aspect-[4/3] overflow-hidden rounded-2xl">
@@ -80,7 +78,7 @@ function RealMarketCard({ market }: { market: RealMarket }) {
           Creator {truncateAddress(market.creator)}
         </div>
       </div>
-    </a>
+    </Link>
   );
 }
 

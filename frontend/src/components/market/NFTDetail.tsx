@@ -7,15 +7,26 @@ import { ArrowLeft, TrendingUp, TrendingDown, DollarSign, BarChart3, Share2, Act
   Crosshair, TrendingUp as TrendLineIcon, Minus, Type, Smile, Ruler, ZoomIn, Magnet, Pencil, BarChart2, Droplets, ChevronUp, ChevronDown } from "lucide-react";
 import { nftData, generateCandlestickHistory, CandleData } from "@/lib/mockData";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, CrosshairMode, LineStyle, PriceScaleMode } from "lightweight-charts";
+import { RealMarketDetail } from "./RealMarketDetail";
 
 const glass =
   "bg-white/50 dark:bg-white/[0.05] backdrop-blur-xl border border-white/70 dark:border-white/10 shadow-[0_8px_32px_rgba(16,185,129,0.07)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.3)]";
 const inset =
   "bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/[0.07] rounded-xl";
 
+/**
+ * Demo Markets (mockData.ts) use short numeric ids; real markets are keyed
+ * by their NFT mint address. If the URL segment doesn't match a mock id,
+ * it's treated as a real mint and handed off to RealMarketDetail.
+ */
 export function NFTDetail() {
   const { id } = useParams();
   const nft = nftData.find((n) => n.id === id);
+  if (!nft) return <RealMarketDetail mint={String(id)} />;
+  return <MockNFTDetail nft={nft} />;
+}
+
+function MockNFTDetail({ nft }: { nft: (typeof nftData)[number] }) {
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
   const [inputMode, setInputMode] = useState<"Shares" | "USD" | "SOL">("Shares");
   const [inputValue, setInputValue] = useState("");
@@ -241,17 +252,6 @@ export function NFTDetail() {
       chartRef.current?.timeScale().fitContent();
     }
   }, [priceHistory]);
-
-  if (!nft) {
-    return (
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-16 text-center">
-        <h2 className="text-2xl font-bold mb-4">NFT not found</h2>
-        <Link href="/marketplace">
-          <button type="button" className="px-5 py-2.5 rounded-xl bg-emerald-500 text-white font-medium">Back to Marketplace</button>
-        </Link>
-      </div>
-    );
-  }
 
   const inputNum = parseFloat(inputValue) || 0;
   const SOL_PRICE = 145; // Mock SOL price
