@@ -6,7 +6,7 @@ Layer 1 of the Candl stack (see `../docs/06-smart-contracts.md`, `../docs/14-roa
 
 All 7 instructions from `docs/06-smart-contracts.md` are implemented for real: `initialize_protocol`, `create_market`, `buy`, `sell`, `extend_market`, `settle`, `redeem`. The bonding curve is the cubic reserve function from `docs/03-economics.md` (`Reserve(S) = curve_alpha*S^3 + curve_beta*S`, computed in `u128` to avoid overflow -- see `src/state/bonding_curve.rs`), not the constant-product model that used to be documented elsewhere (see `../docs/15-decisions.md` ADR #4 for why that changed).
 
-This has **not been deployed anywhere** and **has not been audited**. It compiles, passes its tests, and matches the documented design -- that's it.
+**Deployed to devnet** at `JDqvbHqaL1W57YALJnY1Lyyi6Ai5aFMaNi1mzYATTYAa`, with `ProtocolConfig` initialized at `34ifcRyTexoFhANuo3zZvKz3FRrb5kwMDcf9WnDGzEAN`. **Not audited yet.**
 
 ## Structure
 
@@ -42,7 +42,6 @@ cargo clippy --lib --tests -- -D warnings
 
 ## What's NOT here yet
 
-- Not deployed to devnet or anywhere else.
 - No formal audit (`docs/12-security.md` lists this as a pre-mainnet requirement).
 - No TypeScript SDK/client (planned for V3 per `docs/16-future-ideas.md`) -- the `package.json`/`migrations/` scaffolding from `anchor init` is left in place for when that's built, but nothing in this program depends on it.
-- The backend's indexer (`../backend/src/services/indexer`) can't decode this program's events yet -- it needs `CANDL_PROGRAM_ID` set to this program's deployed address, which doesn't exist until it's actually deployed somewhere.
+- `MarketExtended`/`SharesRedeemed` events aren't wired to indexer handlers yet (only `MarketCreated`/`TradeExecuted`/`MarketSettled` are, in `../backend/src/services/indexer`).
