@@ -6,7 +6,7 @@ import { ArrowLeft, TrendingUp, DollarSign, BarChart3, Droplets, AlertTriangle, 
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineStyle } from "lightweight-charts";
-import type { IChartApi, ISeriesApi, UTCTimestamp } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, UTCTimestamp, IPriceLine } from "lightweight-charts";
 
 import { getMarket, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
 import { useCandlProgram, deriveCandlPdas, deriveTraderPosition, quoteTrade, quotedTotal, buy, sell, type TradeQuote } from "@/lib/candl-program";
@@ -67,28 +67,40 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   );
 
   const { data: stats } = useSWR(
-    market ? `/api/v1/markets/${mint}/stats` : null,
+    `/api/v1/markets/${mint}/stats`,
     () => getMarketStats(mint),
     { refreshInterval: 15_000 }
   );
 
   const { data: candles, mutate: refreshCandles } = useSWR(
-    market ? `/api/v1/markets/${mint}/candles?resolution=${resolution}` : null,
+    `/api/v1/markets/${mint}/candles?resolution=${resolution}`,
     () => getCandles(mint, resolution),
+    { refreshInterval: 10_000 }
+  );
+
+  // Fetch true on-chain state to override any stale/buggy backend indexing
+  const { data: onChainCurve, mutate: refreshOnChainCurve } = useSWR(
+    program ? `onChainCurve:${mint}` : null,
+    async () => {
+      if (!program) return null;
+      const { bondingCurve } = deriveCandlPdas(nftMint);
+      return await program.account.bondingCurve.fetchNullable(bondingCurve);
+    },
     { refreshInterval: 10_000 }
   );
 
   const creator = useMemo(() => (market ? new PublicKey(market.creator) : null), [market]);
 
   const { data: ownedShares, mutate: refreshPosition } = useSWR(
-    program && publicKey && market ? `position:${mint}:${publicKey.toBase58()}` : null,
+    program && publicKey ? `position:${mint}:${publicKey.toBase58()}` : null,
     async () => {
       if (!program || !publicKey) return 0;
       const { market: marketPda } = deriveCandlPdas(nftMint);
       const positionPda = deriveTraderPosition(marketPda, publicKey);
       const position = await program.account.traderPosition.fetchNullable(positionPda);
       return position ? Number(position.shares) : 0;
-    }
+    },
+    { refreshInterval: 10_000 }
   );
 
   const shareAmount = parseInt(shareInput, 10) || 0;
@@ -142,6 +154,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       refreshMarket();
       refreshCandles();
       refreshPosition();
+      refreshOnChainCurve();
     } catch (err) {
       if (!isWalletRejection(err)) console.error(`${tradeType} failed:`, err);
       setSubmitError(getErrorMessage(err, `Failed to ${tradeType} shares.`));
@@ -154,6 +167,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const priceLineRef = useRef<IPriceLine | null>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -172,7 +186,16 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     });
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#10b981", downColor: "#f43f5e", borderVisible: false, wickUpColor: "#10b981", wickDownColor: "#f43f5e",
+      upColor: "#10b981",
+      downColor: "#f43f5e",
+      borderVisible: false,
+      wickUpColor: "#10b981",
+      wickDownColor: "#f43f5e",
+      priceFormat: {
+        type: "price",
+        precision: 6,
+        minMove: 0.000001,
+      },
     });
     const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "volume" });
     chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
@@ -194,16 +217,44 @@ export function RealMarketDetail({ mint }: { mint: string }) {
 
   useEffect(() => {
     if (!seriesRef.current || !volumeSeriesRef.current || !candles || candles.length === 0) return;
-    seriesRef.current.setData(candles.map((c) => ({ ...c, time: c.time as UTCTimestamp })));
+    // Normalize timestamps to seconds and deduplicate by taking the latest candle for each timestamp
+    const candleMap = new Map<number, typeof candles[0]>();
+    for (const c of candles) {
+      const timestampSec = Math.floor(new Date(c.time).getTime() / 1000);
+      if (!isNaN(timestampSec)) {
+        candleMap.set(timestampSec, c);
+      }
+    }
+
+    // Sort strictly ascending and convert prices to SOL
+    const sortedCandles = Array.from(candleMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([timestampSec, c]) => ({
+        ...c,
+        open: Number(c.open) / 1e9,
+        high: Number(c.high) / 1e9,
+        low: Number(c.low) / 1e9,
+        close: Number(c.close) / 1e9,
+        time: timestampSec as UTCTimestamp
+      }));
+
+    if (sortedCandles.length === 0) return;
+
+    seriesRef.current.setData(sortedCandles);
     volumeSeriesRef.current.setData(
-      candles.map((c) => ({
-        time: c.time as UTCTimestamp,
-        value: c.volume,
+      sortedCandles.map((c) => ({
+        time: c.time,
+        value: c.volume, // volume is typically shares, keep as is
         color: c.close >= c.open ? "rgba(16, 185, 129, 0.3)" : "rgba(244, 63, 94, 0.3)",
       }))
     );
-    const last = candles[candles.length - 1];
-    seriesRef.current.createPriceLine({
+    const last = sortedCandles[sortedCandles.length - 1];
+    
+    if (priceLineRef.current) {
+      seriesRef.current.removePriceLine(priceLineRef.current);
+    }
+    
+    priceLineRef.current = seriesRef.current.createPriceLine({
       price: last.close,
       color: last.close >= last.open ? "#10b981" : "#f43f5e",
       lineWidth: 1,
@@ -211,7 +262,16 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       axisLabelVisible: true,
       title: "",
     });
-    chartRef.current?.timeScale().fitContent();
+
+    // Prevent extreme zoom when there are very few candles
+    if (sortedCandles.length < 40) {
+      chartRef.current?.timeScale().setVisibleLogicalRange({
+        from: sortedCandles.length - 40,
+        to: sortedCandles.length + 2,
+      });
+    } else {
+      chartRef.current?.timeScale().fitContent();
+    }
   }, [candles]);
 
   if (marketLoading) {
@@ -224,8 +284,11 @@ export function RealMarketDetail({ mint }: { mint: string }) {
 
   if (marketError || !market) return <NotFound />;
 
+  const outstandingSharesStr = onChainCurve ? onChainCurve.outstandingShares.toString() : market.outstandingShares;
+  const reserveSolStr = onChainCurve ? onChainCurve.realSolReserves.toString() : market.reserveSol;
+
   const priceSOL = lamportsToSol(market.currentPrice);
-  const reserveSOL = lamportsToSol(market.reserveSol);
+  const reserveSOL = lamportsToSol(reserveSolStr);
   const estimateSOL = quote ? lamportsToSol(quotedTotal(quote, tradeType).toString()) : shareAmount * priceSOL;
 
   const isActive = market.state === "ACTIVE";
@@ -263,7 +326,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                 {[
                   { label: "24h Volume", value: `${(stats ? lamportsToSol(stats.volume24h) : 0).toFixed(3)} SOL` },
                   { label: "24h Change", value: `${stats && stats.priceChange24h >= 0 ? "+" : ""}${(stats?.priceChange24h ?? 0).toFixed(2)}%` },
-                  { label: "Outstanding Shares", value: market.outstandingShares ?? "0" },
+                  { label: "Outstanding Shares", value: outstandingSharesStr ?? "0" },
                   { label: "Holders", value: (stats?.holders ?? 0).toString() },
                 ].map(({ label, value }) => (
                   <div key={label} className={`p-3 ${inset}`}>
@@ -330,7 +393,13 @@ export function RealMarketDetail({ mint }: { mint: string }) {
               <DollarSign className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
               <span className="font-semibold">Trade Shares</span>
               {ownedShares ? (
-                <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">You own {ownedShares} shares</span>
+                <div className="ml-auto flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium shadow-sm transition-all hover:bg-emerald-500/15">
+                  <div className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </div>
+                  <span>You own {ownedShares} shares</span>
+                </div>
               ) : null}
             </div>
 
