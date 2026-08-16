@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { getDb } from "../../db/index.js";
 import { candles, markets, trades } from "../../db/schema.js";
 import { applyTradeToCandles, getBucketStart } from "../candle-engine/index.js";
@@ -61,17 +61,18 @@ export async function handleTradeExecuted(db: Db, event: TradeExecutedEvent) {
 
   const [market] = await db.select().from(markets).where(eq(markets.pubkey, event.market)).limit(1);
   if (market) {
-    const currentShares = Number(market.outstandingShares ?? 0);
-    const currentReserve = Number(market.reserveSol ?? 0);
     const shareDelta = event.isBuy ? event.shareAmount : -event.shareAmount;
     const reserveDelta = event.isBuy ? event.solAmount : -event.solAmount;
 
+    // Atomic increment at the SQL level -- concurrent trades on the same
+    // market (e.g. several bots trading close together) can otherwise both
+    // read the same pre-update row and overwrite each other's delta.
     await db
       .update(markets)
       .set({
         currentPrice: event.price.toString(),
-        outstandingShares: (currentShares + shareDelta).toString(),
-        reserveSol: (currentReserve + reserveDelta).toString(),
+        outstandingShares: sql`${markets.outstandingShares} + ${shareDelta}`,
+        reserveSol: sql`${markets.reserveSol} + ${reserveDelta}`,
       })
       .where(eq(markets.pubkey, event.market));
   }
@@ -134,14 +135,15 @@ export async function handleSharesRedeemed(db: Db, event: SharesRedeemedEvent) {
   const [market] = await db.select().from(markets).where(eq(markets.pubkey, event.market)).limit(1);
   if (!market) return;
 
+  // Same atomic-increment reasoning as handleTradeExecuted -- redemptions
+  // can also arrive close together for a settling market.
   const remainingShares = Number(market.outstandingShares ?? 0) - event.shares;
-  const remainingReserve = Number(market.reserveSol ?? 0) - event.solReceived;
 
   await db
     .update(markets)
     .set({
-      outstandingShares: remainingShares.toString(),
-      reserveSol: remainingReserve.toString(),
+      outstandingShares: sql`${markets.outstandingShares} - ${event.shares}`,
+      reserveSol: sql`${markets.reserveSol} - ${event.solReceived}`,
       // redeem.rs flips the on-chain market to Settled once the last share
       // redeems (outstanding_shares hits 0) -- mirror that transition here.
       state: remainingShares <= 0 ? "SETTLED" : "SETTLING",
