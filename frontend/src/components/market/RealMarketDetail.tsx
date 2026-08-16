@@ -380,11 +380,17 @@ export function RealMarketDetail({ mint }: { mint: string }) {
               <span className="text-3xl font-bold text-amber-500 dark:text-amber-400">{priceSOL.toFixed(6)} SOL</span>
             </div>
 
-            <div ref={chartContainerRef} style={{ width: "100%", height: "420px" }} />
+            <div className="relative">
+              <div ref={chartContainerRef} style={{ width: "100%", height: "420px" }} />
 
-            {(!candles || candles.length === 0) && (
-              <p className="text-center text-sm text-slate-400 dark:text-slate-500 py-4">No trades yet on this market.</p>
-            )}
+              {(!candles || candles.length === 0) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                  <BarChart3 className="w-8 h-8 text-slate-300 dark:text-slate-700" />
+                  <p className="text-sm text-slate-400 dark:text-slate-500">No trades yet on this market.</p>
+                  <p className="text-xs text-slate-300 dark:text-slate-600">Be the first to buy shares below.</p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Trading Panel */}
