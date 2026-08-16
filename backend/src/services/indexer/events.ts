@@ -29,4 +29,23 @@ export interface MarketSettledEvent {
   timestamp: number;
 }
 
-export type CandlEvent = MarketCreatedEvent | TradeExecutedEvent | MarketSettledEvent;
+export interface MarketExtendedEvent {
+  type: "MarketExtended";
+  market: string;
+  newExpiresAt: number;
+}
+
+export interface SharesRedeemedEvent {
+  type: "SharesRedeemed";
+  market: string;
+  trader: string;
+  shares: number;
+  solReceived: number;
+}
+
+export type CandlEvent =
+  | MarketCreatedEvent
+  | TradeExecutedEvent
+  | MarketSettledEvent
+  | MarketExtendedEvent
+  | SharesRedeemedEvent;

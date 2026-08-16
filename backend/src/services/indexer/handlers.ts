@@ -4,7 +4,13 @@ import { candles, markets, trades } from "../../db/schema.js";
 import { applyTradeToCandles, getBucketStart } from "../candle-engine/index.js";
 import { resolveAndCacheNftMetadata } from "../metadata/index.js";
 import { getHub } from "../../api/websocket/hub.js";
-import type { MarketCreatedEvent, MarketSettledEvent, TradeExecutedEvent } from "./events.js";
+import type {
+  MarketCreatedEvent,
+  MarketExtendedEvent,
+  MarketSettledEvent,
+  SharesRedeemedEvent,
+  TradeExecutedEvent,
+} from "./events.js";
 
 // Default protocol fee split from docs/03-economics.md; overwritten once the
 // program exposes real per-market fee config in the MarketCreated event.
@@ -119,5 +125,31 @@ export async function handleMarketSettled(db: Db, event: MarketSettledEvent) {
   await db
     .update(markets)
     .set({ state: "SETTLING", reserveSol: event.finalReserve.toString() })
+    .where(eq(markets.pubkey, event.market));
+}
+
+export async function handleMarketExtended(db: Db, event: MarketExtendedEvent) {
+  await db
+    .update(markets)
+    .set({ expiresAt: new Date(event.newExpiresAt * 1000) })
+    .where(eq(markets.pubkey, event.market));
+}
+
+export async function handleSharesRedeemed(db: Db, event: SharesRedeemedEvent) {
+  const [market] = await db.select().from(markets).where(eq(markets.pubkey, event.market)).limit(1);
+  if (!market) return;
+
+  const remainingShares = Number(market.outstandingShares ?? 0) - event.shares;
+  const remainingReserve = Number(market.reserveSol ?? 0) - event.solReceived;
+
+  await db
+    .update(markets)
+    .set({
+      outstandingShares: remainingShares.toString(),
+      reserveSol: remainingReserve.toString(),
+      // redeem.rs flips the on-chain market to Settled once the last share
+      // redeems (outstanding_shares hits 0) -- mirror that transition here.
+      state: remainingShares <= 0 ? "SETTLED" : "SETTLING",
+    })
     .where(eq(markets.pubkey, event.market));
 }

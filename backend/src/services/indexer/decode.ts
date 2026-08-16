@@ -68,9 +68,23 @@ export function decodeCandlEvent(logs: string[], signature: string): CandlEvent 
       };
     }
 
-    // MarketExtended / SharesRedeemed don't have handlers yet (no DB-relevant
-    // side effect beyond what extend_market's caller already knows, and
-    // redeem is settlement-phase bookkeeping not yet consumed downstream).
+    if (event.name === "MarketExtended") {
+      return {
+        type: "MarketExtended",
+        market: toBase58(data.market),
+        newExpiresAt: toNumber(data.new_expires_at),
+      };
+    }
+
+    if (event.name === "SharesRedeemed") {
+      return {
+        type: "SharesRedeemed",
+        market: toBase58(data.market),
+        trader: toBase58(data.trader),
+        shares: toNumber(data.shares),
+        solReceived: toNumber(data.sol_received),
+      };
+    }
   }
 
   return null;
