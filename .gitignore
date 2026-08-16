@@ -13,3 +13,5 @@ coverage/
 .claude/
 .agents/
 skills-lock.json
+.vercel
+assets/NFTs/

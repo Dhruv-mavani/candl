@@ -314,8 +314,8 @@ export function Home() {
           </div>
           <div className="hidden md:block w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
-            <Shield className="w-5 h-5 text-emerald-500" />
-            <span>Bug Bounty Live</span>
+            <Shield className="w-5 h-5 text-amber-500" />
+            <span>Devnet Only -- Audit Pending</span>
           </div>
         </div>
 
