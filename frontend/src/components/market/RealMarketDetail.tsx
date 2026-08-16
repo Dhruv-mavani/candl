@@ -170,7 +170,11 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const priceLineRef = useRef<IPriceLine | null>(null);
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    // marketLoading gates an early return below that skips rendering this
+    // container entirely, so on first mount (while still loading) the ref
+    // is null and chart creation would silently no-op forever -- rerun once
+    // loading finishes and the container actually exists in the DOM.
+    if (!chartContainerRef.current || chartRef.current) return;
     const isDark = document.documentElement.classList.contains("dark");
 
     const chart = createChart(chartContainerRef.current, {
@@ -213,16 +217,17 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       window.removeEventListener("resize", handleResize);
       chart.remove();
     };
-  }, []);
+  }, [marketLoading]);
 
   useEffect(() => {
     if (!seriesRef.current || !volumeSeriesRef.current || !candles || candles.length === 0) return;
-    // Normalize timestamps to seconds and deduplicate by taking the latest candle for each timestamp
+    // markets.ts's /candles route already converts to Unix seconds before
+    // responding (unlike the market row's timestamp fields, which are raw
+    // ISO strings) -- dedupe by taking the latest candle for each timestamp.
     const candleMap = new Map<number, typeof candles[0]>();
     for (const c of candles) {
-      const timestampSec = Math.floor(new Date(c.time).getTime() / 1000);
-      if (!isNaN(timestampSec)) {
-        candleMap.set(timestampSec, c);
+      if (!isNaN(c.time)) {
+        candleMap.set(c.time, c);
       }
     }
 
@@ -263,15 +268,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       title: "",
     });
 
-    // Prevent extreme zoom when there are very few candles
-    if (sortedCandles.length < 40) {
-      chartRef.current?.timeScale().setVisibleLogicalRange({
-        from: sortedCandles.length - 40,
-        to: sortedCandles.length + 2,
-      });
-    } else {
-      chartRef.current?.timeScale().fitContent();
-    }
+    chartRef.current?.timeScale().fitContent();
   }, [candles]);
 
   if (marketLoading) {
@@ -418,7 +415,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
               </button>
               <button type="button"
                 onClick={() => setTradeType("sell")}
-                className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "sell" ? "bg-gradient-to-r from-rose-400 to-pink-500 text-white shadow-md shadow-rose-400/25" : "text-slate-500 dark:text-slate-400"}`}
+                className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "sell" ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-md shadow-red-500/25" : "text-slate-500 dark:text-slate-400"}`}
               >
                 Sell
               </button>
@@ -484,7 +481,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                 className={`w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
                   ${tradeType === "buy"
                     ? "bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 shadow-lg shadow-emerald-400/25"
-                    : "bg-gradient-to-r from-rose-400 to-pink-500 hover:from-rose-500 hover:to-pink-600 shadow-lg shadow-rose-400/25"
+                    : "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
                   }`}
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}

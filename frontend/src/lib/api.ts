@@ -27,8 +27,8 @@ export interface RealMarket {
 }
 
 export interface RealCandle {
-  /** ISO string over the wire (the API serializes a Postgres timestamp column as JSON). */
-  time: string;
+  /** Unix seconds -- the /candles route converts it before responding (unlike the market row's raw ISO-string timestamp fields). */
+  time: number;
   open: number;
   high: number;
   low: number;
