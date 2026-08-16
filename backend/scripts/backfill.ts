@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getDb } from "../src/db/index.js";
-import { decodeCandlEvent } from "../src/services/indexer/decode.js";
+import { decodeCandlEvent, fetchMarketConfig } from "../src/services/indexer/decode.js";
 import { handleMarketCreated, handleMarketSettled, handleTradeExecuted } from "../src/services/indexer/handlers.js";
 
 // One-time (re-runnable) backfill: replays every historical transaction
@@ -35,7 +35,7 @@ async function main() {
 
     console.log(`${signature} -> ${event.type}`);
 
-    if (event.type === "MarketCreated") await handleMarketCreated(db, event);
+    if (event.type === "MarketCreated") await handleMarketCreated(db, event, await fetchMarketConfig(connection, event.market));
     else if (event.type === "TradeExecuted") await handleTradeExecuted(db, event);
     else if (event.type === "MarketSettled") await handleMarketSettled(db, event);
 

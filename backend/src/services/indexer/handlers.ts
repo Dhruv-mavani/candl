@@ -4,6 +4,7 @@ import { candles, markets, trades } from "../../db/schema.js";
 import { applyTradeToCandles, getBucketStart } from "../candle-engine/index.js";
 import { resolveAndCacheNftMetadata } from "../metadata/index.js";
 import { getHub } from "../../api/websocket/hub.js";
+import type { OnChainMarketConfig } from "./decode.js";
 import type {
   MarketCreatedEvent,
   MarketExtendedEvent,
@@ -12,15 +13,9 @@ import type {
   TradeExecutedEvent,
 } from "./events.js";
 
-// Default protocol fee split from docs/03-economics.md; overwritten once the
-// program exposes real per-market fee config in the MarketCreated event.
-const DEFAULT_PROTOCOL_FEE_BPS = 95;
-const DEFAULT_CREATOR_FEE_BPS = 30;
-const DEFAULT_DURATION_SECONDS = 30 * 24 * 60 * 60;
-
 type Db = ReturnType<typeof getDb>;
 
-export async function handleMarketCreated(db: Db, event: MarketCreatedEvent) {
+export async function handleMarketCreated(db: Db, event: MarketCreatedEvent, config: OnChainMarketConfig) {
   const createdAt = new Date(event.timestamp * 1000);
 
   await db
@@ -30,11 +25,11 @@ export async function handleMarketCreated(db: Db, event: MarketCreatedEvent) {
       nftMint: event.nftMint,
       creator: event.creator,
       createdAt,
-      duration: DEFAULT_DURATION_SECONDS,
-      expiresAt: new Date(createdAt.getTime() + DEFAULT_DURATION_SECONDS * 1000),
+      duration: config.durationSeconds,
+      expiresAt: new Date(createdAt.getTime() + config.durationSeconds * 1000),
       state: "ACTIVE",
-      feeProtocolBps: DEFAULT_PROTOCOL_FEE_BPS,
-      feeCreatorBps: DEFAULT_CREATOR_FEE_BPS,
+      feeProtocolBps: config.feeProtocolBps,
+      feeCreatorBps: config.feeCreatorBps,
       currentPrice: "0",
       reserveSol: "0",
       outstandingShares: "0",

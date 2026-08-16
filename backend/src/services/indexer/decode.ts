@@ -1,4 +1,5 @@
 import { BorshCoder, EventParser } from "@anchor-lang/core";
+import type { Connection } from "@solana/web3.js";
 import { PublicKey } from "@solana/web3.js";
 import idl from "../../idl/candl.json" with { type: "json" };
 import type { CandlEvent } from "./events.js";
@@ -88,4 +89,31 @@ export function decodeCandlEvent(logs: string[], signature: string): CandlEvent 
   }
 
   return null;
+}
+
+export interface OnChainMarketConfig {
+  durationSeconds: number;
+  feeProtocolBps: number;
+  feeCreatorBps: number;
+}
+
+/**
+ * MarketCreated's on-chain event only carries market/nftMint/creator/timestamp
+ * (see events.rs) -- duration and fees are real per-market values set by
+ * create_market.rs but never emitted, so the indexer has to read the Market
+ * account itself rather than guess at them (a hardcoded 30-day/95bps/30bps
+ * default previously caused markets created with a different duration to
+ * cache the wrong expiresAt, silently letting the frontend offer trades on
+ * markets that had already expired on-chain).
+ */
+export async function fetchMarketConfig(connection: Connection, marketPubkey: string): Promise<OnChainMarketConfig> {
+  const accountInfo = await connection.getAccountInfo(new PublicKey(marketPubkey));
+  if (!accountInfo) throw new Error(`Market account ${marketPubkey} not found on-chain`);
+
+  const market = coder.accounts.decode("Market", accountInfo.data) as Record<string, unknown>;
+  return {
+    durationSeconds: toNumber(market.duration),
+    feeProtocolBps: toNumber(market.fee_protocol_bps),
+    feeCreatorBps: toNumber(market.fee_creator_bps),
+  };
 }

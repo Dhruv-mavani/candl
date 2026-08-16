@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import type { getDb } from "../../db/index.js";
-import { decodeCandlEvent } from "./decode.js";
+import { decodeCandlEvent, fetchMarketConfig } from "./decode.js";
 import {
   handleMarketCreated,
   handleMarketExtended,
@@ -38,7 +38,7 @@ export function startIndexer(db: Db): IndexerHandle {
   const programPublicKey = new PublicKey(programId);
 
   const subscriptionId = connection.onLogs(programPublicKey, (logInfo) => {
-    void handleLogs(db, logInfo.logs, logInfo.signature, logInfo.err !== null);
+    void handleLogs(db, connection, logInfo.logs, logInfo.signature, logInfo.err !== null);
   });
 
   console.log(`[indexer] listening for logs from ${programId} on ${endpoint}`);
@@ -50,14 +50,14 @@ export function startIndexer(db: Db): IndexerHandle {
   };
 }
 
-async function handleLogs(db: Db, logs: string[], signature: string, hasError: boolean) {
+async function handleLogs(db: Db, connection: Connection, logs: string[], signature: string, hasError: boolean) {
   if (hasError) return;
 
   const event = decodeCandlEvent(logs, signature);
   if (!event) return;
 
   try {
-    if (event.type === "MarketCreated") await handleMarketCreated(db, event);
+    if (event.type === "MarketCreated") await handleMarketCreated(db, event, await fetchMarketConfig(connection, event.market));
     else if (event.type === "TradeExecuted") await handleTradeExecuted(db, event);
     else if (event.type === "MarketSettled") await handleMarketSettled(db, event);
     else if (event.type === "MarketExtended") await handleMarketExtended(db, event);

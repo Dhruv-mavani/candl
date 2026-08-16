@@ -11,13 +11,17 @@ const TRADER = "9RRDcvHfNfKKfrgYLuLNQhcpXeDNaewaR9M8j1z8yrDW";
 const now = Math.floor(Date.now() / 1000);
 
 console.log("1. Simulating MarketCreated event...");
-await handleMarketCreated(db, {
-  type: "MarketCreated",
-  market: MARKET_PUBKEY,
-  nftMint: NFT_MINT,
-  creator: CREATOR,
-  timestamp: now - 3600,
-});
+await handleMarketCreated(
+  db,
+  {
+    type: "MarketCreated",
+    market: MARKET_PUBKEY,
+    nftMint: NFT_MINT,
+    creator: CREATOR,
+    timestamp: now - 3600,
+  },
+  { durationSeconds: 30 * 24 * 60 * 60, feeProtocolBps: 95, feeCreatorBps: 30 }
+);
 
 console.log("2. Simulating 3 TradeExecuted events (buy, buy, sell)...");
 await handleTradeExecuted(db, {
