@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { getDb } from "../../db/index.js";
-import { getProtocolStats, getTrendingMarkets } from "../../services/analytics/index.js";
+import { getCreatorEarnings, getProtocolStats, getTrendingMarkets } from "../../services/analytics/index.js";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -16,5 +16,11 @@ export function registerProtocolRoutes(app: FastifyInstance, db: Db) {
     const limit = Number(request.query.limit ?? "10");
     const trending = await getTrendingMarkets(db, limit);
     return reply.send(trending);
+  });
+
+  // GET /creators/:pubkey/earnings -- what a market creator has earned in fees, per market they created.
+  app.get<{ Params: { pubkey: string } }>("/api/v1/creators/:pubkey/earnings", async (request, reply) => {
+    const earnings = await getCreatorEarnings(db, request.params.pubkey);
+    return reply.send(earnings);
   });
 }

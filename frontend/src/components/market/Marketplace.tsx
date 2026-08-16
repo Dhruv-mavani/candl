@@ -3,9 +3,13 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import useSWR from "swr";
-import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle, Landmark } from "lucide-react";
 import { nftData } from "@/lib/mockData";
-import { getMarkets, type RealMarket } from "@/lib/api";
+import { getMarkets, getProtocolStats, type RealMarket } from "@/lib/api";
+
+function lamportsToSol(value: number) {
+  return value / 1e9;
+}
 
 const glass =
   "bg-white/50 dark:bg-white/[0.05] backdrop-blur-xl border border-white/70 dark:border-white/10 shadow-[0_8px_32px_rgba(16,185,129,0.07)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.3)]";
@@ -93,6 +97,8 @@ export function Marketplace() {
     { refreshInterval: 15000 }
   );
 
+  const { data: protocolStats } = useSWR("/api/v1/protocol/stats", getProtocolStats, { refreshInterval: 30000 });
+
   const categories = ["all", "art", "gaming", "collectibles"];
 
   const filteredNFTs = nftData
@@ -114,9 +120,25 @@ export function Marketplace() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-1">NFT Marketplace</h1>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">Trade fractional shares of premium NFTs</p>
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-1">NFT Marketplace</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Trade fractional shares of premium NFTs</p>
+        </div>
+
+        {protocolStats && (
+          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl ${glass}`}>
+            <Landmark className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />
+            <div>
+              <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
+                Protocol Revenue (devnet)
+              </div>
+              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                {lamportsToSol(protocolStats.totalProtocolEarnings).toFixed(6)} SOL
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Search + Filters */}

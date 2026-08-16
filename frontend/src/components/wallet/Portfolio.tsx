@@ -1,11 +1,14 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, Clock, ImageOff, Sparkles, X } from "lucide-react";
+import { Wallet, TrendingUp, ArrowUpRight, ArrowDownRight, Clock, ImageOff, Sparkles, X, Coins } from "lucide-react";
 import { getPortfolioData, nftData } from "@/lib/mockData";
 import { useNFTStore, type OwnedNFT } from "@/lib/nft-store";
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { useState } from "react";
+import useSWR from "swr";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { getCreatorEarnings } from "@/lib/api";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,10 +26,21 @@ const glass =
 const inset =
   "bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/[0.07] rounded-xl";
 
+function lamportsToSol(value: number) {
+  return value / 1e9;
+}
+
 export function Portfolio() {
   const portfolioData = getPortfolioData();
   const [tab, setTab] = useState<"holdings" | "mynfts" | "history">("holdings");
   const myNFTs = useNFTStore((s) => s.nfts);
+  const { publicKey } = useWallet();
+  const { data: creatorEarnings } = useSWR(
+    publicKey ? `/api/v1/creators/${publicKey.toBase58()}/earnings` : null,
+    () => getCreatorEarnings(publicKey!.toBase58()),
+    { refreshInterval: 15000 }
+  );
+  const marketsWithEarnings = creatorEarnings?.markets.filter((m) => m.tradeCount > 0) ?? [];
   const removeNFT = useNFTStore((s) => s.removeNFT);
   const [nftPendingRemoval, setNftPendingRemoval] = useState<OwnedNFT | null>(null);
   const [nftForMarketCreation, setNftForMarketCreation] = useState<OwnedNFT | null>(null);
@@ -160,6 +174,30 @@ export function Portfolio() {
           </div>
         </div>
       </div>
+
+      {/* Creator Earnings (real on-chain fee revenue -- only shown once you've created a market someone actually traded on) */}
+      {marketsWithEarnings.length > 0 && (
+        <div className={`rounded-2xl p-5 mb-8 relative overflow-hidden ${glass}`}>
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-400/8 to-transparent rounded-2xl" />
+          <div className="relative flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-1">
+            <Coins className="w-3.5 h-3.5" />
+            Creator Earnings (devnet)
+          </div>
+          <div className="relative text-2xl font-bold mb-4 text-amber-600 dark:text-amber-400">
+            {lamportsToSol(creatorEarnings?.totalEarnedLamports ?? 0).toFixed(6)} SOL
+          </div>
+          <div className="relative space-y-2">
+            {marketsWithEarnings.map((m) => (
+              <div key={m.marketPubkey} className={`flex items-center justify-between p-3 ${inset}`}>
+                <div className="text-xs text-slate-500 dark:text-slate-400 truncate mr-3">
+                  {m.nftMint.slice(0, 4)}..{m.nftMint.slice(-4)} · {m.tradeCount} trade{m.tradeCount === 1 ? "" : "s"}
+                </div>
+                <div className="text-sm font-semibold shrink-0">{lamportsToSol(m.earnedLamports).toFixed(6)} SOL</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className={`flex items-center gap-1 p-1 rounded-2xl mb-5 w-fit ${glass}`}>

@@ -45,6 +45,28 @@ export interface RealMarketStats {
 /** Matches docs/10-api.md's allowed candle resolutions. */
 export type CandleResolution = "1m" | "5m" | "15m" | "1h" | "1d";
 
+export interface ProtocolStats {
+  totalMarkets: number;
+  totalVolume: number;
+  totalUniqueTraders: number;
+  /** Combined protocol + creator fees across every trade, in lamports. */
+  totalFeesCollected: number;
+  /** The protocol's own cut of totalFeesCollected, in lamports. */
+  totalProtocolEarnings: number;
+}
+
+export interface CreatorMarketEarnings {
+  marketPubkey: string;
+  nftMint: string;
+  tradeCount: number;
+  earnedLamports: number;
+}
+
+export interface CreatorEarnings {
+  totalEarnedLamports: number;
+  markets: CreatorMarketEarnings[];
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`);
   if (!res.ok) throw new Error(`Backend request failed: ${res.status} ${res.statusText}`);
@@ -68,4 +90,12 @@ export function getCandles(mint: string, resolution: CandleResolution): Promise<
 
 export function getMarketStats(mint: string): Promise<RealMarketStats> {
   return fetchJson<RealMarketStats>(`/api/v1/markets/${mint}/stats`);
+}
+
+export function getProtocolStats(): Promise<ProtocolStats> {
+  return fetchJson<ProtocolStats>("/api/v1/protocol/stats");
+}
+
+export function getCreatorEarnings(pubkey: string): Promise<CreatorEarnings> {
+  return fetchJson<CreatorEarnings>(`/api/v1/creators/${pubkey}/earnings`);
 }
