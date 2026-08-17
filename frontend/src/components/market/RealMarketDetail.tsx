@@ -9,7 +9,19 @@ import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineStyle }
 import type { IChartApi, ISeriesApi, UTCTimestamp, IPriceLine } from "lightweight-charts";
 
 import { getMarket, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
-import { useCandlProgram, deriveCandlPdas, deriveTraderPosition, quoteTrade, quotedTotal, buy, sell, type TradeQuote } from "@/lib/candl-program";
+import {
+  useCandlProgram,
+  deriveCandlPdas,
+  deriveTraderPosition,
+  quoteTrade,
+  quotedTotal,
+  buy,
+  sell,
+  settleMarket,
+  quoteRedeem,
+  redeem,
+  type TradeQuote,
+} from "@/lib/candl-program";
 import { getErrorMessage, isWalletRejection } from "@/lib/wallet-errors";
 
 const glass =
@@ -160,6 +172,83 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       setSubmitError(getErrorMessage(err, `Failed to ${tradeType} shares.`));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const [settling, setSettling] = useState(false);
+  const [settleError, setSettleError] = useState<string | null>(null);
+  const [settleSignature, setSettleSignature] = useState<string | null>(null);
+
+  const handleSettle = async () => {
+    setSettleError(null);
+    setSettleSignature(null);
+    if (!program) {
+      setSettleError("Connect your wallet first.");
+      return;
+    }
+    setSettling(true);
+    try {
+      const { signature } = await settleMarket({ program, nftMint });
+      setSettleSignature(signature);
+      refreshMarket();
+    } catch (err) {
+      if (!isWalletRejection(err)) console.error("settle failed:", err);
+      setSettleError(getErrorMessage(err, "Failed to settle market."));
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  const [redeemInput, setRedeemInput] = useState("");
+  const redeemAmount = parseInt(redeemInput, 10) || 0;
+  const [redeemQuote, setRedeemQuote] = useState<{ solReceived: string } | null>(null);
+  const [redeemQuoting, setRedeemQuoting] = useState(false);
+  const [redeeming, setRedeeming] = useState(false);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
+  const [redeemSignature, setRedeemSignature] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timeout = setTimeout(async () => {
+      if (!program || !publicKey || !creator || redeemAmount <= 0) {
+        setRedeemQuote(null);
+        return;
+      }
+      setRedeemQuoting(true);
+      try {
+        const q = await quoteRedeem({ program, trader: publicKey, nftMint, creator, shareAmount: redeemAmount });
+        setRedeemQuote(q);
+      } catch {
+        setRedeemQuote(null);
+      } finally {
+        setRedeemQuoting(false);
+      }
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [program, publicKey, creator, redeemAmount, nftMint]);
+
+  const handleRedeem = async () => {
+    setRedeemError(null);
+    setRedeemSignature(null);
+    if (!program || !publicKey || !creator) {
+      setRedeemError("Connect your wallet first.");
+      return;
+    }
+    if (redeemAmount <= 0) return;
+
+    setRedeeming(true);
+    try {
+      const { signature } = await redeem({ program, trader: publicKey, nftMint, creator, shareAmount: redeemAmount });
+      setRedeemSignature(signature);
+      setRedeemInput("");
+      setRedeemQuote(null);
+      refreshMarket();
+      refreshPosition();
+      refreshOnChainCurve();
+    } catch (err) {
+      if (!isWalletRejection(err)) console.error("redeem failed:", err);
+      setRedeemError(getErrorMessage(err, "Failed to redeem shares."));
+    } finally {
+      setRedeeming(false);
     }
   };
 
@@ -345,7 +434,11 @@ export function RealMarketDetail({ mint }: { mint: string }) {
               {!canTrade && (
                 <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-400/[0.07] border border-amber-200/60 dark:border-amber-400/15 text-xs text-amber-700 dark:text-amber-300">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
-                  {isExpired ? "This market has expired." : `Market is ${market.state.toLowerCase()} -- trading is closed.`}
+                  {market.state === "SETTLED"
+                    ? "This market has been fully settled."
+                    : market.state === "SETTLING"
+                      ? "Market is settling -- redeem your shares below."
+                      : "This market has expired -- awaiting settlement."}
                 </div>
               )}
             </div>
@@ -390,111 +483,236 @@ export function RealMarketDetail({ mint }: { mint: string }) {
             </div>
           </div>
 
-          {/* Trading Panel */}
+          {/* Trading / Settle / Redeem Panel */}
           <div className={`rounded-2xl p-5 ${glass}`}>
-            <div className="flex items-center gap-2 mb-5">
-              <DollarSign className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
-              <span className="font-semibold">Trade Shares</span>
-              {ownedShares ? (
-                <div className="ml-auto flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium shadow-sm transition-all hover:bg-emerald-500/15">
-                  <div className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </div>
-                  <span>You own {ownedShares} shares</span>
+            {market.state === "ACTIVE" && !isExpired && (
+              <>
+                <div className="flex items-center gap-2 mb-5">
+                  <DollarSign className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                  <span className="font-semibold">Trade Shares</span>
+                  {ownedShares ? (
+                    <div className="ml-auto flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium shadow-sm transition-all hover:bg-emerald-500/15">
+                      <div className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </div>
+                      <span>You own {ownedShares} shares</span>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
 
-            <div className={`flex items-center gap-1 p-1 rounded-2xl mb-5 ${inset}`}>
-              <button type="button"
-                onClick={() => setTradeType("buy")}
-                className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "buy" ? "bg-gradient-to-r from-emerald-400 to-teal-500 text-white shadow-md shadow-emerald-400/25" : "text-slate-500 dark:text-slate-400"}`}
-              >
-                Buy
-              </button>
-              <button type="button"
-                onClick={() => setTradeType("sell")}
-                className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "sell" ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-md shadow-red-500/25" : "text-slate-500 dark:text-slate-400"}`}
-              >
-                Sell
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="real-trade-shares" className="text-xs text-slate-400 dark:text-slate-500 block mb-1.5">
-                  {tradeType === "buy" ? "Shares to buy" : "Shares to sell"}
-                </label>
-                <input
-                  id="real-trade-shares"
-                  type="number"
-                  min={0}
-                  step={1}
-                  placeholder="0"
-                  value={shareInput}
-                  onChange={(e) => setShareInput(e.target.value)}
-                  disabled={!canTrade}
-                  className={`w-full h-12 px-4 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                />
-              </div>
-
-              <div className={`p-4 space-y-2 ${inset}`}>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-400 dark:text-slate-500">Spot price</span>
-                  <span className="font-medium">{priceSOL.toFixed(6)} SOL</span>
-                </div>
-                <div className="border-t border-black/5 dark:border-white/5 pt-2 flex justify-between items-center">
-                  <span className="font-semibold text-sm">
-                    {tradeType === "buy" ? "Total Cost" : "You Receive"} {quoting && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}
-                  </span>
-                  <span className={`text-lg font-bold ${tradeType === "buy" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
-                    {estimateSOL > 0 ? estimateSOL.toFixed(6) : "0"} SOL
-                  </span>
-                </div>
-                {!quote && shareAmount > 0 && (
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">Estimate from current spot price -- exact cost is confirmed on submit.</p>
-                )}
-              </div>
-
-              {insufficientShares && (
-                <p className="text-sm text-destructive">You only own {ownedShares ?? 0} shares.</p>
-              )}
-              {submitError && <p className="text-sm text-destructive">{submitError}</p>}
-              {submitSignature && (
-                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <a
-                    href={`https://explorer.solana.com/tx/${submitSignature}?cluster=devnet`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:underline"
+                <div className={`flex items-center gap-1 p-1 rounded-2xl mb-5 ${inset}`}>
+                  <button type="button"
+                    onClick={() => setTradeType("buy")}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "buy" ? "bg-gradient-to-r from-emerald-400 to-teal-500 text-white shadow-md shadow-emerald-400/25" : "text-slate-500 dark:text-slate-400"}`}
                   >
-                    Trade confirmed -- view on Solana Explorer
-                  </a>
+                    Buy
+                  </button>
+                  <button type="button"
+                    onClick={() => setTradeType("sell")}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "sell" ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-md shadow-red-500/25" : "text-slate-500 dark:text-slate-400"}`}
+                  >
+                    Sell
+                  </button>
                 </div>
-              )}
 
-              <button type="button"
-                onClick={handleSubmit}
-                disabled={!canTrade || !program || submitting || shareAmount <= 0 || insufficientShares}
-                className={`w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
-                  ${tradeType === "buy"
-                    ? "bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 shadow-lg shadow-emerald-400/25"
-                    : "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
-                  }`}
-              >
-                {submitting && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
-                {!program ? "Connect Wallet" : submitting ? "Confirming…" : tradeType === "buy" ? "Buy Shares" : "Sell Shares"}
-              </button>
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="real-trade-shares" className="text-xs text-slate-400 dark:text-slate-500 block mb-1.5">
+                      {tradeType === "buy" ? "Shares to buy" : "Shares to sell"}
+                    </label>
+                    <input
+                      id="real-trade-shares"
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="0"
+                      value={shareInput}
+                      onChange={(e) => setShareInput(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      disabled={!canTrade}
+                      className={`w-full h-12 px-4 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                    />
+                  </div>
 
-              <div className="bg-sky-50/80 dark:bg-sky-400/[0.07] border border-sky-200/60 dark:border-sky-400/15 rounded-xl p-3">
-                <p className="text-xs text-sky-700 dark:text-sky-300">
-                  <TrendingUp className="inline w-3 h-3 mr-1" />
-                  Fees are {(market.feeProtocolBps + market.feeCreatorBps) / 100}% per trade ({market.feeProtocolBps / 100}% protocol / {market.feeCreatorBps / 100}% creator).
+                  <div className={`p-4 space-y-2 ${inset}`}>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400 dark:text-slate-500">Spot price</span>
+                      <span className="font-medium">{priceSOL.toFixed(6)} SOL</span>
+                    </div>
+                    <div className="border-t border-black/5 dark:border-white/5 pt-2 flex justify-between items-center">
+                      <span className="font-semibold text-sm">
+                        {tradeType === "buy" ? "Total Cost" : "You Receive"} {quoting && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}
+                      </span>
+                      <span className={`text-lg font-bold ${tradeType === "buy" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                        {estimateSOL > 0 ? estimateSOL.toFixed(6) : "0"} SOL
+                      </span>
+                    </div>
+                    {!quote && shareAmount > 0 && (
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">Estimate from current spot price -- exact cost is confirmed on submit.</p>
+                    )}
+                  </div>
+
+                  {insufficientShares && (
+                    <p className="text-sm text-destructive">You only own {ownedShares ?? 0} shares.</p>
+                  )}
+                  {submitError && <p className="text-sm text-destructive">{submitError}</p>}
+                  {submitSignature && (
+                    <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <a
+                        href={`https://explorer.solana.com/tx/${submitSignature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        Trade confirmed -- view on Solana Explorer
+                      </a>
+                    </div>
+                  )}
+
+                  <button type="button"
+                    onClick={handleSubmit}
+                    disabled={!canTrade || !program || submitting || shareAmount <= 0 || insufficientShares}
+                    className={`w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed
+                      ${tradeType === "buy"
+                        ? "bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 shadow-lg shadow-emerald-400/25"
+                        : "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/25"
+                      }`}
+                  >
+                    {submitting && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
+                    {!program ? "Connect Wallet" : submitting ? "Confirming…" : tradeType === "buy" ? "Buy Shares" : "Sell Shares"}
+                  </button>
+
+                  <div className="bg-sky-50/80 dark:bg-sky-400/[0.07] border border-sky-200/60 dark:border-sky-400/15 rounded-xl p-3">
+                    <p className="text-xs text-sky-700 dark:text-sky-300">
+                      <TrendingUp className="inline w-3 h-3 mr-1" />
+                      Fees are {(market.feeProtocolBps + market.feeCreatorBps) / 100}% per trade ({market.feeProtocolBps / 100}% protocol / {market.feeCreatorBps / 100}% creator).
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {market.state === "ACTIVE" && isExpired && (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <span className="font-semibold">Market Expired</span>
+                </div>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
+                  Trading has closed. Settlement is permissionless -- anyone can trigger it, which unlocks redemption for every shareholder.
                 </p>
+
+                {settleError && <p className="text-sm text-destructive mb-3">{settleError}</p>}
+                {settleSignature && (
+                  <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 mb-3">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <a
+                      href={`https://explorer.solana.com/tx/${settleSignature}?cluster=devnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline"
+                    >
+                      Market settled -- view on Solana Explorer
+                    </a>
+                  </div>
+                )}
+
+                <button type="button"
+                  onClick={handleSettle}
+                  disabled={!program || settling}
+                  className="w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 shadow-lg shadow-amber-400/25"
+                >
+                  {settling && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
+                  {!program ? "Connect Wallet" : settling ? "Settling…" : "Settle Market"}
+                </button>
+              </>
+            )}
+
+            {market.state === "SETTLING" && (
+              <>
+                <div className="flex items-center gap-2 mb-5">
+                  <DollarSign className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                  <span className="font-semibold">Redeem Shares</span>
+                  {ownedShares ? (
+                    <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">You own {ownedShares} shares</span>
+                  ) : null}
+                </div>
+
+                {!ownedShares && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    You don&apos;t hold any shares in this market to redeem.
+                  </p>
+                )}
+
+                {!!ownedShares && (
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="redeem-shares" className="text-xs text-slate-400 dark:text-slate-500 block mb-1.5">
+                        Shares to redeem
+                      </label>
+                      <input
+                        id="redeem-shares"
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="0"
+                        value={redeemInput}
+                        onChange={(e) => setRedeemInput(e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        className={`w-full h-12 px-4 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                      />
+                    </div>
+
+                    <div className={`p-4 space-y-2 ${inset}`}>
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-sm">
+                          You Receive {redeemQuoting && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}
+                        </span>
+                        <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                          {redeemQuote ? lamportsToSol(redeemQuote.solReceived).toFixed(6) : "0"} SOL
+                        </span>
+                      </div>
+                    </div>
+
+                    {redeemAmount > (ownedShares ?? 0) && (
+                      <p className="text-sm text-destructive">You only own {ownedShares} shares.</p>
+                    )}
+                    {redeemError && <p className="text-sm text-destructive">{redeemError}</p>}
+                    {redeemSignature && (
+                      <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <a
+                          href={`https://explorer.solana.com/tx/${redeemSignature}?cluster=devnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline"
+                        >
+                          Redeemed -- view on Solana Explorer
+                        </a>
+                      </div>
+                    )}
+
+                    <button type="button"
+                      onClick={handleRedeem}
+                      disabled={!program || redeeming || redeemAmount <= 0 || redeemAmount > (ownedShares ?? 0)}
+                      className="w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 shadow-lg shadow-emerald-400/25"
+                    >
+                      {redeeming && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
+                      {!program ? "Connect Wallet" : redeeming ? "Redeeming…" : "Redeem Shares"}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {market.state === "SETTLED" && (
+              <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                This market has been fully settled. All shares have been redeemed and the NFT has returned to its creator.
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

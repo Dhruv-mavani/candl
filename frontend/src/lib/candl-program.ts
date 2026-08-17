@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider, BN, Program } from "@anchor-lang/core";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import idl from "./idl/candl.json";
 import type { Candl } from "./idl/candl";
 
@@ -176,6 +176,75 @@ export async function sell({ program, trader, nftMint, creator, shareAmount, quo
     .sell(new BN(shareAmount), minSolOut)
     .accountsStrict(accounts)
     .rpc();
+
+  return { signature };
+}
+
+/**
+ * Transitions an expired Active market to Settling. Permissionless on-chain
+ * (settle.rs takes no signer beyond whoever pays the tx fee) -- any wallet
+ * can call this once the market's real expiry has passed.
+ */
+export async function settleMarket({ program, nftMint }: { program: Program<Candl>; nftMint: PublicKey }) {
+  const { market, bondingCurve } = deriveCandlPdas(nftMint);
+
+  const signature = await program.methods.settle().accountsStrict({ market, bondingCurve }).rpc();
+
+  return { signature };
+}
+
+export interface RedeemParams {
+  program: Program<Candl>;
+  trader: PublicKey;
+  nftMint: PublicKey;
+  creator: PublicKey;
+  shareAmount: number;
+}
+
+function resolveRedeemAccounts(nftMint: PublicKey, trader: PublicKey, creator: PublicKey) {
+  const { market, bondingCurve, vault, escrow } = deriveCandlPdas(nftMint);
+  const traderPosition = deriveTraderPosition(market, trader);
+  // redeem.rs requires this to already exist (the creator's own ATA from
+  // create_market's deposit, now empty since the NFT moved to escrow), so
+  // unlike createMarket there's nothing here that needs init_if_needed.
+  const creatorTokenAccount = getAssociatedTokenAddressSync(nftMint, creator);
+
+  return {
+    market,
+    bondingCurve,
+    vault,
+    traderPosition,
+    trader,
+    escrow,
+    nftMint,
+    creatorTokenAccount,
+    creator,
+    tokenProgram: TOKEN_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+  };
+}
+
+/**
+ * Authoritative redemption preview: simulates the real instruction and
+ * reads back its emitted SharesRedeemed.sol_received rather than
+ * reimplementing the pro-rata payout formula in the frontend.
+ */
+export async function quoteRedeem({ program, trader, nftMint, creator, shareAmount }: RedeemParams): Promise<{ solReceived: string }> {
+  const accounts = resolveRedeemAccounts(nftMint, trader, creator);
+  const shares = new BN(shareAmount);
+
+  const { events } = await program.methods.redeem(shares).accountsStrict(accounts).simulate();
+
+  const event = events.find((e) => e.name.toLowerCase() === "sharesredeemed");
+  if (!event) throw new Error("Simulation did not emit a SharesRedeemed event.");
+  return { solReceived: String(event.data.solReceived) };
+}
+
+/** Sends the real redeem transaction -- pays out shareAmount's pro-rata share of the reserve. */
+export async function redeem({ program, trader, nftMint, creator, shareAmount }: RedeemParams) {
+  const accounts = resolveRedeemAccounts(nftMint, trader, creator);
+
+  const signature = await program.methods.redeem(new BN(shareAmount)).accountsStrict(accounts).rpc();
 
   return { signature };
 }
