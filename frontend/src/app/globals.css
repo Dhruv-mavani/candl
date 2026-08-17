@@ -294,9 +294,9 @@ body {
 }
 
 .dark .wallet-adapter-modal-wrapper {
-  background-color: rgba(11, 16, 21, 0.95) !important;
-  background-image: linear-gradient(rgba(52, 211, 153, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(52, 211, 153, 0.05) 1px, transparent 1px) !important;
-  border-color: rgba(16, 185, 129, 0.2) !important;
+  background-color: rgba(9, 9, 11, 0.95) !important; /* zinc-950 */
+  background-image: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Title is always white because it's inside the image banner now */

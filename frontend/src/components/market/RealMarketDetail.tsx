@@ -75,7 +75,7 @@ function NotFound() {
 }
 
 export function RealMarketDetail({ mint }: { mint: string }) {
-  const [resolution, setResolution] = useState<CandleResolution>("1h");
+  const [resolution, setResolution] = useState<CandleResolution>("1m");
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
   const [amountMode, setAmountMode] = useState<"Shares" | "SOL">("Shares");
   const [shareInput, setShareInput] = useState("");
@@ -513,7 +513,22 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       title: "",
     });
 
-    chartRef.current?.timeScale().fitContent();
+    // fitContent() alone stretches whatever's loaded to fill the chart width --
+    // with few 1m candles (the new default resolution) that renders each bar
+    // huge/over-zoomed. Padding the visible range out to a minimum bar count
+    // keeps bars a sane width and leaves empty space on the left instead.
+    const MIN_VISIBLE_BARS = 60;
+    if (processedCandles.length < MIN_VISIBLE_BARS) {
+      // Leave breathing room on the right for future candles instead of
+      // pinning the last candle to the right edge.
+      const rightPad = Math.min(10, Math.floor(MIN_VISIBLE_BARS * 0.15));
+      chartRef.current?.timeScale().setVisibleLogicalRange({
+        from: processedCandles.length - (MIN_VISIBLE_BARS - rightPad),
+        to: processedCandles.length - 1 + rightPad,
+      });
+    } else {
+      chartRef.current?.timeScale().fitContent();
+    }
   }, [processedCandles]);
 
   // Redraws every active indicator from the real candles already loaded.
