@@ -517,14 +517,26 @@ export function RealMarketDetail({ mint }: { mint: string }) {
 
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: "Market Cap", value: `${(stats ? lamportsToSol(stats.marketCap) : 0).toFixed(4)} SOL`, color: "text-sky-600 dark:text-sky-400" },
-                  { label: "24h Volume", value: `${(stats ? lamportsToSol(stats.volume24h) : 0).toFixed(4)} SOL`, color: "text-amber-500 dark:text-amber-400" },
-                  { label: "Outstanding Shares", value: outstandingSharesStr ?? "0", color: "" },
-                  { label: "Holders", value: (stats?.holderCount ?? 0).toString(), color: "" },
-                ].map(({ label, value, color }) => (
+                  { label: "Market Cap", sol: stats ? lamportsToSol(stats.marketCap) : 0, color: "text-sky-600 dark:text-sky-400" },
+                  { label: "24h Volume", sol: stats ? lamportsToSol(stats.volume24h) : 0, color: "text-amber-500 dark:text-amber-400" },
+                ].map(({ label, sol, color }) => (
                   <div key={label} className={`p-3 ${inset}`}>
                     <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{label}</div>
-                    <div className={`font-semibold text-sm ${color}`}>{value}</div>
+                    <div className={`font-semibold text-sm ${color}`}>
+                      {solPriceUsd !== undefined
+                        ? `$${(sol * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : `${sol.toFixed(4)} SOL`}
+                    </div>
+                    {solPriceUsd !== undefined && <div className="text-[11px] text-slate-400 dark:text-slate-500">{sol.toFixed(4)} SOL</div>}
+                  </div>
+                ))}
+                {[
+                  { label: "Outstanding Shares", value: outstandingSharesStr ?? "0" },
+                  { label: "Holders", value: (stats?.holderCount ?? 0).toString() },
+                ].map(({ label, value }) => (
+                  <div key={label} className={`p-3 ${inset}`}>
+                    <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{label}</div>
+                    <div className="font-semibold text-sm">{value}</div>
                   </div>
                 ))}
               </div>
@@ -535,11 +547,15 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                   Reserve Liquidity
                 </div>
                 <div className="flex items-baseline gap-1.5 mb-2 flex-wrap">
-                  <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{reserveSOL.toFixed(4)} SOL</span>
-                  {solPriceUsd !== undefined && (
-                    <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                      ≈ ${(reserveSOL * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
+                  {solPriceUsd !== undefined ? (
+                    <>
+                      <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                        ${(reserveSOL * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">{reserveSOL.toFixed(4)} SOL</span>
+                    </>
+                  ) : (
+                    <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{reserveSOL.toFixed(4)} SOL</span>
                   )}
                   <span className="text-xs text-slate-400 ml-1">locked in curve</span>
                 </div>
