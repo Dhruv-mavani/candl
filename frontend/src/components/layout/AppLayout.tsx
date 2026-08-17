@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { TrendingUp, LayoutDashboard, ShoppingBag, User, Sun, Moon, MessageCircle, Code2, Send, MessageSquare, Hash, BookOpen } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, User, Sun, Moon } from "lucide-react";
 import { Button } from "../common/button";
 import { CandlLogo } from "../common/CandlLogo";
 import { useState, useEffect } from "react";
@@ -15,6 +15,10 @@ const WalletMultiButton = dynamic(
   { ssr: false }
 );
 
+// While the site is pre-launch, this hides wallet connect/trading entry points
+// and swaps in a waitlist signup CTA instead. Flip off in env when trading opens.
+const WAITLIST_MODE = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = usePathname();
   const { connected } = useWallet();
@@ -25,7 +29,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [createNFTOpen, setCreateNFTOpen] = useState(false);
   const [importNFTOpen, setImportNFTOpen] = useState(false);
 
-  const navLinks = connected
+  const navLinks = WAITLIST_MODE
+    ? []
+    : connected
     ? [
         { to: "/", label: "Marketplace", icon: ShoppingBag },
         { to: "/portfolio", label: "Portfolio", icon: User },
@@ -82,12 +88,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* ── Background layer ── */}
       <div className="fixed inset-0 -z-10 overflow-hidden">
         {/* Base */}
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 dark:from-[#060e18] dark:via-[#071420] dark:to-[#060e18]" />
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-sky-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950" />
         {/* Blobs */}
-        <div className="absolute -top-32 -left-32 w-[480px] h-[480px] rounded-full bg-emerald-300/35 dark:bg-emerald-500/15 blur-[100px]" />
-        <div className="absolute top-1/2 -right-24 w-[380px] h-[380px] rounded-full bg-sky-300/30 dark:bg-sky-500/12 blur-[90px]" />
-        <div className="absolute bottom-0 left-1/3 w-[340px] h-[340px] rounded-full bg-amber-200/40 dark:bg-amber-400/10 blur-[80px]" />
-        <div className="absolute top-1/3 left-1/2 w-[260px] h-[260px] rounded-full bg-teal-200/25 dark:bg-teal-400/8 blur-[70px]" />
+        <div className="absolute -top-32 -left-32 w-[480px] h-[480px] rounded-full bg-emerald-300/35 dark:bg-zinc-800/30 blur-[100px]" />
+        <div className="absolute top-1/2 -right-24 w-[380px] h-[380px] rounded-full bg-sky-300/30 dark:bg-zinc-800/20 blur-[90px]" />
+        <div className="absolute bottom-0 left-1/3 w-[340px] h-[340px] rounded-full bg-amber-200/40 dark:bg-zinc-700/20 blur-[80px]" />
+        <div className="absolute top-1/3 left-1/2 w-[260px] h-[260px] rounded-full bg-teal-200/25 dark:bg-zinc-800/20 blur-[70px]" />
       </div>
 
       {/* ── Grid overlay ── */}
@@ -95,7 +101,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         className="pointer-events-none fixed inset-0 z-0"
         style={{
           backgroundImage: isDark
-            ? "linear-gradient(rgba(52,211,153,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(52,211,153,0.05) 1px,transparent 1px)"
+            ? "linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px)"
             : "linear-gradient(rgba(16,185,129,0.07) 1px,transparent 1px),linear-gradient(90deg,rgba(16,185,129,0.07) 1px,transparent 1px)",
           backgroundSize: "40px 40px",
         }}
@@ -150,7 +156,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
               </button>
 
-              {connected && (
+              {!WAITLIST_MODE && connected && (
                 <div className="hidden sm:flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -171,14 +177,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
               )}
 
-              <div className="wallet-adapter-container">
-                <WalletMultiButton className="candl-wallet-btn" style={{ 
-                  height: '36px', 
-                  fontSize: '14px', 
-                  borderRadius: '12px',
-                  fontWeight: 600,
-                }} />
-              </div>
+              {WAITLIST_MODE ? (
+                <Link href="/waitlist">
+                  <Button
+                    size="sm"
+                    className="h-9 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-semibold"
+                  >
+                    Join Waitlist
+                  </Button>
+                </Link>
+              ) : (
+                <div className="wallet-adapter-container">
+                  <WalletMultiButton className="candl-wallet-btn" style={{
+                    height: '36px',
+                    fontSize: '14px',
+                    borderRadius: '12px',
+                    fontWeight: 600,
+                  }} />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -190,6 +207,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* ── Mobile bottom nav ── */}
+      {navLinks.length > 0 && (
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-3 pb-3">
         <div
           className="flex items-center justify-around h-14 rounded-2xl
@@ -211,6 +229,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           ))}
         </div>
       </div>
+      )}
       {/* ── Premium Footer ── */}
       <footer className="relative z-10 mt-24 border-t border-emerald-200/50 dark:border-white/10 bg-white/40 dark:bg-slate-900/40 backdrop-blur-2xl overflow-hidden">
         
@@ -219,64 +238,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <h1 className="text-[33vw] font-black tracking-tighter whitespace-nowrap text-emerald-900 dark:text-white">CANDL</h1>
         </div>
 
-        {/* 1. Hero CTA & Contact Block */}
+        {/* 1. Hero CTA */}
         <div className="relative w-full px-4 sm:px-6 lg:px-8 pt-24 pb-16 border-b border-emerald-200/50 dark:border-white/10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-8 items-center">
-            {/* Left: Massive CTA */}
-            <div className="space-y-6">
-              <div className="text-xs font-bold tracking-[0.2em] text-emerald-600 dark:text-emerald-400 uppercase">
-                FAST. SECURE. LIQUID.
-              </div>
-              <h2 className="text-6xl md:text-8xl font-black tracking-tight text-slate-900 dark:text-white leading-[0.9]">
-                Start<br />Trading.
-              </h2>
-              <p className="text-lg text-slate-600 dark:text-slate-400 max-w-md pt-2">
-                Join the revolution of decentralized NFT trading. Deposit an asset or buy shares instantly.
-              </p>
-              <div className="flex items-center gap-4 pt-4">
-                <Link href="/marketplace">
-                  <button type="button" className="px-8 py-4 rounded-full font-bold bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_0_40px_rgba(16,185,129,0.3)] transition active:scale-95">
-                    START TRADING &rarr;
-                  </button>
-                </Link>
-                <button type="button" className="px-8 py-4 rounded-full font-bold border-2 border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition active:scale-95">
-                  VIEW DOCS
-                </button>
-              </div>
+          <div className="max-w-2xl space-y-6">
+            <div className="text-xs font-bold tracking-[0.2em] text-emerald-600 dark:text-emerald-400 uppercase">
+              FAST. SECURE. LIQUID.
             </div>
-
-            {/* Right: Ecosystem Grid */}
-            <div className="lg:pl-16">
-              <h3 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Join the Ecosystem</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 max-w-sm">
-                Candl is built by the community, for the community. Connect with us, read the docs, or contribute to the protocol.
-              </p>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-emerald-400 dark:hover:border-emerald-500/50 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors">
-                  <MessageSquare className="w-6 h-6 text-[#5865F2] mb-3 transition-transform group-hover:-translate-y-1" />
-                  <span className="font-bold text-slate-900 dark:text-white">Discord</span>
-                  <span className="text-xs text-slate-500 mt-1">12k+ Active Traders</span>
-                </a>
-                
-                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-sky-400 dark:hover:border-sky-500/50 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors">
-                  <Hash className="w-6 h-6 text-[#1DA1F2] mb-3 transition-transform group-hover:-translate-y-1" />
-                  <span className="font-bold text-slate-900 dark:text-white">Twitter (X)</span>
-                  <span className="text-xs text-slate-500 mt-1">Protocol Announcements</span>
-                </a>
-                
-                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-amber-400 dark:hover:border-amber-500/50 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
-                  <BookOpen className="w-6 h-6 text-amber-500 mb-3 transition-transform group-hover:-translate-y-1" />
-                  <span className="font-bold text-slate-900 dark:text-white">Documentation</span>
-                  <span className="text-xs text-slate-500 mt-1">Smart Contract Specs</span>
-                </a>
-                
-                <a href="#" className="group flex flex-col p-5 rounded-2xl bg-white/50 dark:bg-black/20 border border-emerald-200/50 dark:border-white/10 hover:border-slate-400 dark:hover:border-slate-500/50 hover:bg-slate-50 dark:hover:bg-slate-500/10 transition-colors">
-                  <Code2 className="w-6 h-6 text-slate-800 dark:text-white mb-3 transition-transform group-hover:-translate-y-1" />
-                  <span className="font-bold text-slate-900 dark:text-white">GitHub</span>
-                  <span className="text-xs text-slate-500 mt-1">100% Open Source</span>
-                </a>
-              </div>
+            <h2 className="text-6xl md:text-8xl font-black tracking-tight text-slate-900 dark:text-white leading-[0.9]">
+              Start<br />Trading.
+            </h2>
+            <p className="text-lg text-slate-600 dark:text-slate-400 max-w-md pt-2">
+              {WAITLIST_MODE
+                ? "Candl is still in development. Join the waitlist and we'll let you know the moment trading opens."
+                : "Join the revolution of decentralized NFT trading. Deposit an asset or buy shares instantly."}
+            </p>
+            <div className="flex items-center gap-4 pt-4">
+              <Link href={WAITLIST_MODE ? "/waitlist" : "/marketplace"}>
+                <button type="button" className="px-8 py-4 rounded-full font-bold bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_0_40px_rgba(16,185,129,0.3)] transition active:scale-95">
+                  {WAITLIST_MODE ? "JOIN WAITLIST" : "START TRADING"} &rarr;
+                </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -301,41 +282,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* 3. Link Grid */}
         <div className="w-full px-4 sm:px-6 lg:px-8 py-16">
-          <div className="flex flex-wrap justify-between md:justify-evenly w-full max-w-5xl mx-auto gap-12 md:gap-24">
+          <div className="w-full max-w-5xl mx-auto">
               <div>
                 <h4 className="text-xs font-bold tracking-wider text-emerald-600 dark:text-emerald-400 mb-6 uppercase">Platform</h4>
                 <ul className="space-y-4 text-sm font-medium text-slate-600 dark:text-slate-300">
-                  <li><Link href="/marketplace" className="hover:text-emerald-500 transition-colors">Marketplace</Link></li>
-                  <li><Link href="/portfolio" className="hover:text-emerald-500 transition-colors">Portfolio</Link></li>
-                  <li><a href="#" className="hover:text-emerald-500 transition-colors">Analytics</a></li>
-                  <li><a href="#" className="hover:text-emerald-500 transition-colors">Leaderboard</a></li>
-                </ul>
-              </div>
-              
-              <div>
-                <h4 className="text-xs font-bold tracking-wider text-emerald-600 dark:text-emerald-400 mb-6 uppercase">Resources</h4>
-                <ul className="space-y-4 text-sm font-medium text-slate-600 dark:text-slate-300">
-                  <li><a href="#" className="hover:text-emerald-500 transition-colors">Documentation</a></li>
-                  <li>
-                    <a href="#" className="hover:text-emerald-500 transition-colors flex items-center gap-2">
-                      Careers <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[9px] px-1.5 py-0.5 rounded-sm uppercase tracking-wider">Hiring</span>
-                    </a>
-                  </li>
-                  <li><a href="#" className="hover:text-emerald-500 transition-colors">Audits</a></li>
-                  <li><a href="#" className="hover:text-emerald-500 transition-colors">Brand Assets</a></li>
-                </ul>
-              </div>
-              
-              <div>
-                <h4 className="text-xs font-bold tracking-wider text-emerald-600 dark:text-emerald-400 mb-6 uppercase">Social</h4>
-                <ul className="space-y-4 text-sm font-medium text-slate-600 dark:text-slate-300">
-                  <li><a href="#" className="hover:text-emerald-500 transition-colors flex items-center justify-between gap-4">Twitter ↗</a></li>
-                  <li><a href="#" className="hover:text-emerald-500 transition-colors flex items-center justify-between gap-4">Discord ↗</a></li>
-                  <li><a href="#" className="hover:text-emerald-500 transition-colors flex items-center justify-between gap-4">GitHub ↗</a></li>
+                  {WAITLIST_MODE ? (
+                    <li><Link href="/waitlist" className="hover:text-emerald-500 transition-colors">Join Waitlist</Link></li>
+                  ) : (
+                    <>
+                      <li><Link href="/marketplace" className="hover:text-emerald-500 transition-colors">Marketplace</Link></li>
+                      <li><Link href="/portfolio" className="hover:text-emerald-500 transition-colors">Portfolio</Link></li>
+                    </>
+                  )}
                 </ul>
               </div>
             </div>
-          
+
           <div className="mt-16 pt-8 border-t border-emerald-200/50 dark:border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-medium text-slate-500 dark:text-slate-500">
             <div>© {new Date().getFullYear()} CANDL. ALL RIGHTS RESERVED.</div>
             <div className="flex gap-6 uppercase tracking-wider">

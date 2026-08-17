@@ -117,3 +117,41 @@ export function getProtocolStats(): Promise<ProtocolStats> {
 export function getCreatorEarnings(pubkey: string): Promise<CreatorEarnings> {
   return fetchJson<CreatorEarnings>(`/api/v1/creators/${pubkey}/earnings`);
 }
+
+export interface WaitlistJoinPayload {
+  email: string;
+  name: string;
+  twitter?: string;
+  walletAddress?: string;
+  message?: string;
+}
+
+export interface WaitlistEntry {
+  id: number;
+  email: string;
+  name: string;
+  twitter: string | null;
+  walletAddress: string | null;
+  message: string | null;
+  createdAt: string;
+}
+
+export async function joinWaitlist(payload: WaitlistJoinPayload): Promise<{ status: "joined" | "already-joined" }> {
+  const res = await fetch(`${API_URL}/api/v1/waitlist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `Request failed: ${res.status}`);
+  return data;
+}
+
+/** Admin-only: reads the waitlist, gated by ADMIN_SECRET on the backend. */
+export async function getWaitlistEntries(adminSecret: string): Promise<WaitlistEntry[]> {
+  const res = await fetch(`${API_URL}/api/v1/admin/waitlist`, {
+    headers: { "x-admin-secret": adminSecret },
+  });
+  if (!res.ok) throw new Error(res.status === 401 ? "Invalid admin secret" : `Request failed: ${res.status}`);
+  return res.json();
+}

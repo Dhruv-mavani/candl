@@ -82,6 +82,17 @@ export const nftMetadata = pgTable("nft_metadata", {
   fetchedAt: timestamp("fetched_at").defaultNow(),
 });
 
+// Pre-launch signups, collected while the site is gated behind waitlist mode.
+export const waitlist = pgTable("waitlist", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  twitter: varchar("twitter", { length: 100 }),
+  walletAddress: varchar("wallet_address", { length: 44 }),
+  message: text("message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type Market = typeof markets.$inferSelect;
 export type NewMarket = typeof markets.$inferInsert;
 export type Trade = typeof trades.$inferSelect;
@@ -90,3 +101,5 @@ export type Candle = typeof candles.$inferSelect;
 export type NewCandle = typeof candles.$inferInsert;
 export type NftMetadataRow = typeof nftMetadata.$inferSelect;
 export type NewNftMetadataRow = typeof nftMetadata.$inferInsert;
+export type WaitlistEntry = typeof waitlist.$inferSelect;
+export type NewWaitlistEntry = typeof waitlist.$inferInsert;

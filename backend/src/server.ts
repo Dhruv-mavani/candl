@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import { getDb } from "./db/index.js";
 import { registerMarketRoutes } from "./api/routes/markets.js";
 import { registerProtocolRoutes } from "./api/routes/protocol.js";
+import { registerWaitlistRoutes } from "./api/routes/waitlist.js";
 import { registerWebSocketRoute } from "./api/websocket/index.js";
 import { startIndexer } from "./services/indexer/index.js";
 
@@ -17,6 +18,7 @@ async function main() {
 
   registerMarketRoutes(app, db);
   registerProtocolRoutes(app, db);
+  registerWaitlistRoutes(app, db);
 
   app.get("/health", async () => ({ status: "ok" }));
 

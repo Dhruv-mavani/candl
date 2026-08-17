@@ -9,6 +9,10 @@ import "@solana/wallet-adapter-react-ui/styles.css";
 
 import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
 
+// The connect button is hidden while gated (see AppLayout.tsx), so there's no
+// UI to disconnect -- don't silently reconnect a previously-used wallet either.
+const WAITLIST_MODE = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
+
 export const WalletContextProvider: FC<{ children: ReactNode }> = ({ children }) => {
   // You can also provide a custom RPC endpoint
   const endpoint = useMemo(() => clusterApiUrl("devnet"), []);
@@ -21,7 +25,7 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({ children })
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={!WAITLIST_MODE}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
