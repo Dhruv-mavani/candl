@@ -58,6 +58,8 @@ export interface ProtocolStats {
 export interface CreatorMarketEarnings {
   marketPubkey: string;
   nftMint: string;
+  nftName: string | null;
+  nftImageUrl: string | null;
   tradeCount: number;
   earnedLamports: number;
 }

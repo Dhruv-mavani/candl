@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type { getDb } from "../../db/index.js";
-import { markets, trades } from "../../db/schema.js";
+import { markets, nftMetadata, trades } from "../../db/schema.js";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -21,6 +21,8 @@ function creatorShareOfFee(feePaid: number, protocolBps: number, creatorBps: num
 export interface CreatorMarketEarnings {
   marketPubkey: string;
   nftMint: string;
+  nftName: string | null;
+  nftImageUrl: string | null;
   tradeCount: number;
   earnedLamports: number;
 }
@@ -36,6 +38,8 @@ export async function getCreatorEarnings(db: Db, creator: string): Promise<Creat
     .select({
       marketPubkey: markets.pubkey,
       nftMint: markets.nftMint,
+      nftName: nftMetadata.name,
+      nftImageUrl: nftMetadata.imageUrl,
       feeProtocolBps: markets.feeProtocolBps,
       feeCreatorBps: markets.feeCreatorBps,
       tradeCount: sql<string>`COUNT(${trades.id})`,
@@ -43,12 +47,15 @@ export async function getCreatorEarnings(db: Db, creator: string): Promise<Creat
     })
     .from(markets)
     .leftJoin(trades, eq(trades.marketPubkey, markets.pubkey))
+    .leftJoin(nftMetadata, eq(nftMetadata.mint, markets.nftMint))
     .where(eq(markets.creator, creator))
-    .groupBy(markets.pubkey, markets.nftMint, markets.feeProtocolBps, markets.feeCreatorBps);
+    .groupBy(markets.pubkey, markets.nftMint, nftMetadata.name, nftMetadata.imageUrl, markets.feeProtocolBps, markets.feeCreatorBps);
 
   const perMarket = rows.map((row) => ({
     marketPubkey: row.marketPubkey,
     nftMint: row.nftMint,
+    nftName: row.nftName,
+    nftImageUrl: row.nftImageUrl,
     tradeCount: Number(row.tradeCount),
     earnedLamports: creatorShareOfFee(Number(row.totalFeePaid), row.feeProtocolBps, row.feeCreatorBps),
   }));

@@ -188,12 +188,32 @@ export function Portfolio() {
           </div>
           <div className="relative space-y-2">
             {marketsWithEarnings.map((m) => (
-              <div key={m.marketPubkey} className={`flex items-center justify-between p-3 ${inset}`}>
-                <div className="text-xs text-slate-500 dark:text-slate-400 truncate mr-3">
-                  {m.nftMint.slice(0, 4)}..{m.nftMint.slice(-4)} · {m.tradeCount} trade{m.tradeCount === 1 ? "" : "s"}
+              <Link
+                key={m.marketPubkey}
+                href={`/market/${m.nftMint}`}
+                className={`flex items-center gap-3 p-3 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.04] ${inset}`}
+              >
+                {m.nftImageUrl ? (
+                  // m.nftImageUrl is an arbitrary on-chain URL (IPFS/Arweave/any host a
+                  // creator supplied) that next/image's loader cannot resolve without a
+                  // pre-configured remotePatterns entry.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.nftImageUrl} alt={m.nftName ?? "NFT"} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                ) : (
+                  <div className="w-9 h-9 rounded-lg bg-black/5 dark:bg-white/5 flex items-center justify-center shrink-0">
+                    <ImageOff className="w-4 h-4 text-slate-400" />
+                  </div>
+                )}
+                <div className="min-w-0 mr-3">
+                  <div className="text-sm font-medium truncate">
+                    {m.nftName ?? `${m.nftMint.slice(0, 4)}..${m.nftMint.slice(-4)}`}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {m.tradeCount} trade{m.tradeCount === 1 ? "" : "s"}
+                  </div>
                 </div>
-                <div className="text-sm font-semibold shrink-0">{lamportsToSol(m.earnedLamports).toFixed(6)} SOL</div>
-              </div>
+                <div className="text-sm font-semibold shrink-0 ml-auto">{lamportsToSol(m.earnedLamports).toFixed(6)} SOL</div>
+              </Link>
             ))}
           </div>
         </div>
