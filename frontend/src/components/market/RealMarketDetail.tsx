@@ -23,6 +23,7 @@ import type { IChartApi, ISeriesApi, UTCTimestamp, IPriceLine, MouseEventParams 
 
 import { getMarket, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
 import { formatCountdown } from "@/lib/format";
+import { useSolPriceUsd } from "@/lib/solPrice";
 import {
   useCandlProgram,
   deriveCandlPdas,
@@ -93,6 +94,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     { refreshInterval: 10_000 }
   );
   const priceSOL = lamportsToSol(market?.currentPrice);
+  const solPriceUsd = useSolPriceUsd();
 
   const { data: stats } = useSWR(
     `/api/v1/markets/${mint}/stats`,
@@ -532,8 +534,13 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                   <Droplets className="w-3.5 h-3.5" />
                   Reserve Liquidity
                 </div>
-                <div className="flex items-baseline gap-1.5 mb-2">
+                <div className="flex items-baseline gap-1.5 mb-2 flex-wrap">
                   <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{reserveSOL.toFixed(4)} SOL</span>
+                  {solPriceUsd !== undefined && (
+                    <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                      ≈ ${(reserveSOL * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  )}
                   <span className="text-xs text-slate-400 ml-1">locked in curve</span>
                 </div>
                 <div className="h-1.5 bg-slate-200/60 dark:bg-white/10 rounded-full overflow-hidden">
