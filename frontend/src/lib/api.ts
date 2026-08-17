@@ -36,14 +36,29 @@ export interface RealCandle {
   volume: number;
 }
 
+export interface HolderPosition {
+  trader: string;
+  shares: number;
+}
+
 export interface RealMarketStats {
   volume24h: number;
-  priceChange24h: number;
-  holders: number;
+  totalVolume: number;
+  tradeCount: number;
+  priceChange24h: number | null;
+  priceChange7d: number | null;
+  priceChange30d: number | null;
+  marketCap: number | null;
+  reserveSol: number | null;
+  currentPrice: number | null;
+  athPrice: number | null;
+  atlPrice: number | null;
+  holderCount: number;
+  largestHolder: HolderPosition | null;
 }
 
 /** Matches docs/10-api.md's allowed candle resolutions. */
-export type CandleResolution = "1m" | "5m" | "15m" | "1h" | "1d";
+export type CandleResolution = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
 
 export interface ProtocolStats {
   totalMarkets: number;
@@ -86,8 +101,9 @@ export function getMarket(mint: string): Promise<RealMarket> {
   return fetchJson<RealMarket>(`/api/v1/markets/${mint}`);
 }
 
-export function getCandles(mint: string, resolution: CandleResolution): Promise<RealCandle[]> {
-  return fetchJson<RealCandle[]>(`/api/v1/markets/${mint}/candles?resolution=${resolution}`);
+export function getCandles(mint: string, resolution: CandleResolution, fromUnixSeconds?: number): Promise<RealCandle[]> {
+  const from = fromUnixSeconds ? `&from=${fromUnixSeconds}` : "";
+  return fetchJson<RealCandle[]>(`/api/v1/markets/${mint}/candles?resolution=${resolution}${from}`);
 }
 
 export function getMarketStats(mint: string): Promise<RealMarketStats> {

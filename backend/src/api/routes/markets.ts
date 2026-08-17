@@ -124,10 +124,6 @@ export function registerMarketRoutes(app: FastifyInstance, db: Db) {
     const stats = await getMarketStats(db, market.pubkey);
     if (!stats) return reply.code(404).send({ error: "Market not found" });
 
-    return reply.send({
-      volume24h: stats.volume24h,
-      priceChange24h: stats.priceChange24h,
-      holders: stats.holderCount,
-    });
+    return reply.send(stats);
   });
 }

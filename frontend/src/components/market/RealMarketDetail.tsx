@@ -2,11 +2,24 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { ArrowLeft, TrendingUp, DollarSign, BarChart3, Droplets, AlertTriangle, Loader2, CheckCircle2, Clock } from "lucide-react";
+import {
+  ArrowLeft,
+  TrendingUp,
+  DollarSign,
+  BarChart3,
+  Droplets,
+  AlertTriangle,
+  Loader2,
+  CheckCircle2,
+  Clock,
+  Activity,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineStyle } from "lightweight-charts";
-import type { IChartApi, ISeriesApi, UTCTimestamp, IPriceLine } from "lightweight-charts";
+import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineStyle, CrosshairMode, PriceScaleMode } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
 
 import { getMarket, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
 import { formatCountdown } from "@/lib/format";
@@ -58,6 +71,7 @@ function NotFound() {
 export function RealMarketDetail({ mint }: { mint: string }) {
   const [resolution, setResolution] = useState<CandleResolution>("1h");
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
+  const [amountMode, setAmountMode] = useState<"Shares" | "SOL">("Shares");
   const [shareInput, setShareInput] = useState("");
 
   const { publicKey } = useWallet();
@@ -78,6 +92,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     () => getMarket(mint),
     { refreshInterval: 10_000 }
   );
+  const priceSOL = lamportsToSol(market?.currentPrice);
 
   const { data: stats } = useSWR(
     `/api/v1/markets/${mint}/stats`,
@@ -116,7 +131,16 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     { refreshInterval: 10_000 }
   );
 
-  const shareAmount = parseInt(shareInput, 10) || 0;
+  // In SOL mode the input is a spending budget, not a share count -- buy()/sell()
+  // only ever take a share count, so this converts at the current spot price as
+  // an initial guess; the debounced quote below then gets the real, exact preview
+  // for that rounded share count (never a fabricated SOL-exact order).
+  const shareAmount =
+    amountMode === "Shares"
+      ? parseInt(shareInput, 10) || 0
+      : priceSOL > 0
+        ? Math.floor((parseFloat(shareInput) || 0) / priceSOL)
+        : 0;
   const [quote, setQuote] = useState<TradeQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
 
@@ -258,6 +282,56 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLineRef = useRef<IPriceLine | null>(null);
+  const [priceScaleMode, setPriceScaleMode] = useState<"normal" | "log" | "percentage">("normal");
+
+  // Real OHLC readout for whichever candle the cursor is over -- null (falls
+  // back to the latest real candle below) when the cursor isn't on the chart.
+  const [crosshairData, setCrosshairData] = useState<{
+    open: number; high: number; low: number; close: number; volume: number; change: number; changePercent: number;
+  } | null>(null);
+
+  // markets.ts's /candles route already converts time to Unix seconds before
+  // responding (unlike the market row's timestamp fields, which are raw ISO
+  // strings). Shared by the chart-drawing effect and the render-time stats
+  // below (avg/total volume, candle count) so both read the same real data.
+  const processedCandles = useMemo(() => {
+    if (!candles || candles.length === 0) return [];
+    const candleMap = new Map<number, (typeof candles)[0]>();
+    for (const c of candles) {
+      if (!isNaN(c.time)) candleMap.set(c.time, c);
+    }
+    return Array.from(candleMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([timestampSec, c]) => ({
+        ...c,
+        open: Number(c.open) / 1e9,
+        high: Number(c.high) / 1e9,
+        low: Number(c.low) / 1e9,
+        close: Number(c.close) / 1e9,
+        time: timestampSec as UTCTimestamp,
+      }));
+  }, [candles]);
+
+  const latestCandle = processedCandles[processedCandles.length - 1] ?? null;
+  const displayCandle =
+    crosshairData ??
+    (latestCandle
+      ? {
+          open: latestCandle.open,
+          high: latestCandle.high,
+          low: latestCandle.low,
+          close: latestCandle.close,
+          volume: latestCandle.volume,
+          change: latestCandle.close - latestCandle.open,
+          changePercent: latestCandle.open !== 0 ? ((latestCandle.close - latestCandle.open) / latestCandle.open) * 100 : 0,
+        }
+      : null);
+
+  const chartStats = useMemo(() => {
+    if (processedCandles.length === 0) return { totalVolume: 0, avgVolume: 0 };
+    const totalVolume = processedCandles.reduce((sum, c) => sum + c.volume, 0);
+    return { totalVolume, avgVolume: Math.floor(totalVolume / processedCandles.length) };
+  }, [processedCandles]);
 
   useEffect(() => {
     // marketLoading gates an early return below that skips rendering this
@@ -275,6 +349,11 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       },
       width: chartContainerRef.current.clientWidth,
       height: 420,
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { width: 1, color: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)", style: LineStyle.Dotted, labelBackgroundColor: isDark ? "#1e293b" : "#f1f5f9" },
+        horzLine: { width: 1, color: isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.15)", style: LineStyle.Dotted, labelBackgroundColor: isDark ? "#1e293b" : "#f1f5f9" },
+      },
       timeScale: { timeVisible: true, secondsVisible: false, borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)" },
       rightPriceScale: { borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)", autoScale: true },
     });
@@ -298,57 +377,65 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     seriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
 
+    const handleCrosshairMove = (param: MouseEventParams) => {
+      const candleData = param.seriesData?.get(candleSeries) as { open: number; high: number; low: number; close: number } | undefined;
+      const volData = param.seriesData?.get(volumeSeries) as { value: number } | undefined;
+      if (!param.time || !candleData || typeof candleData.open !== "number") {
+        setCrosshairData(null);
+        return;
+      }
+      const change = candleData.close - candleData.open;
+      setCrosshairData({
+        open: candleData.open,
+        high: candleData.high,
+        low: candleData.low,
+        close: candleData.close,
+        volume: volData?.value ?? 0,
+        change,
+        changePercent: candleData.open !== 0 ? (change / candleData.open) * 100 : 0,
+      });
+    };
+    chart.subscribeCrosshairMove(handleCrosshairMove);
+
     const handleResize = () => {
       if (chartContainerRef.current) chart.applyOptions({ width: chartContainerRef.current.clientWidth });
     };
     window.addEventListener("resize", handleResize);
 
     return () => {
+      chart.unsubscribeCrosshairMove(handleCrosshairMove);
       window.removeEventListener("resize", handleResize);
       chart.remove();
+      // Without this, the mount-guard above (`if (chartRef.current) return`)
+      // sees a stale ref to this now-disposed chart and skips recreating one
+      // -- in dev, React Strict Mode's mount/cleanup/mount double-invoke made
+      // every ref here point at a removed chart with an empty panes array,
+      // so any later chartRef.current.priceScale(...) call threw "incorrect
+      // pane index" the instant a scale-mode button was clicked.
+      chartRef.current = null;
+      seriesRef.current = null;
+      volumeSeriesRef.current = null;
+      priceLineRef.current = null;
     };
   }, [marketLoading]);
 
   useEffect(() => {
-    if (!seriesRef.current || !volumeSeriesRef.current || !candles || candles.length === 0) return;
-    // markets.ts's /candles route already converts to Unix seconds before
-    // responding (unlike the market row's timestamp fields, which are raw
-    // ISO strings) -- dedupe by taking the latest candle for each timestamp.
-    const candleMap = new Map<number, typeof candles[0]>();
-    for (const c of candles) {
-      if (!isNaN(c.time)) {
-        candleMap.set(c.time, c);
-      }
-    }
+    if (!seriesRef.current || !volumeSeriesRef.current || processedCandles.length === 0) return;
 
-    // Sort strictly ascending and convert prices to SOL
-    const sortedCandles = Array.from(candleMap.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([timestampSec, c]) => ({
-        ...c,
-        open: Number(c.open) / 1e9,
-        high: Number(c.high) / 1e9,
-        low: Number(c.low) / 1e9,
-        close: Number(c.close) / 1e9,
-        time: timestampSec as UTCTimestamp
-      }));
-
-    if (sortedCandles.length === 0) return;
-
-    seriesRef.current.setData(sortedCandles);
+    seriesRef.current.setData(processedCandles);
     volumeSeriesRef.current.setData(
-      sortedCandles.map((c) => ({
+      processedCandles.map((c) => ({
         time: c.time,
         value: c.volume, // volume is typically shares, keep as is
         color: c.close >= c.open ? "rgba(16, 185, 129, 0.3)" : "rgba(244, 63, 94, 0.3)",
       }))
     );
-    const last = sortedCandles[sortedCandles.length - 1];
-    
+    const last = processedCandles[processedCandles.length - 1];
+
     if (priceLineRef.current) {
       seriesRef.current.removePriceLine(priceLineRef.current);
     }
-    
+
     priceLineRef.current = seriesRef.current.createPriceLine({
       price: last.close,
       color: last.close >= last.open ? "#10b981" : "#f43f5e",
@@ -359,7 +446,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     });
 
     chartRef.current?.timeScale().fitContent();
-  }, [candles]);
+  }, [processedCandles]);
 
   if (marketLoading) {
     return (
@@ -374,7 +461,6 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const outstandingSharesStr = onChainCurve ? onChainCurve.outstandingShares.toString() : market.outstandingShares;
   const reserveSolStr = onChainCurve ? onChainCurve.realSolReserves.toString() : market.reserveSol;
 
-  const priceSOL = lamportsToSol(market.currentPrice);
   const reserveSOL = lamportsToSol(reserveSolStr);
   const estimateSOL = quote ? lamportsToSol(quotedTotal(quote, tradeType).toString()) : shareAmount * priceSOL;
 
@@ -429,14 +515,14 @@ export function RealMarketDetail({ mint }: { mint: string }) {
 
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: "24h Volume", value: `${(stats ? lamportsToSol(stats.volume24h) : 0).toFixed(3)} SOL` },
-                  { label: "24h Change", value: `${stats && stats.priceChange24h >= 0 ? "+" : ""}${(stats?.priceChange24h ?? 0).toFixed(2)}%` },
-                  { label: "Outstanding Shares", value: outstandingSharesStr ?? "0" },
-                  { label: "Holders", value: (stats?.holders ?? 0).toString() },
-                ].map(({ label, value }) => (
+                  { label: "Market Cap", value: `${(stats ? lamportsToSol(stats.marketCap) : 0).toFixed(4)} SOL`, color: "text-sky-600 dark:text-sky-400" },
+                  { label: "24h Volume", value: `${(stats ? lamportsToSol(stats.volume24h) : 0).toFixed(4)} SOL`, color: "text-amber-500 dark:text-amber-400" },
+                  { label: "Outstanding Shares", value: outstandingSharesStr ?? "0", color: "" },
+                  { label: "Holders", value: (stats?.holderCount ?? 0).toString(), color: "" },
+                ].map(({ label, value, color }) => (
                   <div key={label} className={`p-3 ${inset}`}>
                     <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{label}</div>
-                    <div className="font-semibold text-sm">{value}</div>
+                    <div className={`font-semibold text-sm ${color}`}>{value}</div>
                   </div>
                 ))}
               </div>
@@ -446,8 +532,13 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                   <Droplets className="w-3.5 h-3.5" />
                   Reserve Liquidity
                 </div>
-                <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{reserveSOL.toFixed(4)} SOL</span>
-                <span className="text-xs text-slate-400 ml-1.5">locked in curve</span>
+                <div className="flex items-baseline gap-1.5 mb-2">
+                  <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{reserveSOL.toFixed(4)} SOL</span>
+                  <span className="text-xs text-slate-400 ml-1">locked in curve</span>
+                </div>
+                <div className="h-1.5 bg-slate-200/60 dark:bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 w-full" />
+                </div>
               </div>
 
               {!canTrade && (
@@ -467,11 +558,74 @@ export function RealMarketDetail({ mint }: { mint: string }) {
         {/* ── Right: Chart + Trading ── */}
         <div className="lg:col-span-2 space-y-5">
           <div className={`rounded-2xl p-5 ${glass}`}>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                 <span className="font-semibold text-sm">{market.metadata?.name ?? "Market"}/SOL</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">· {resolution.toUpperCase()} · Candl</span>
               </div>
+            </div>
+
+            {/* OHLC data bar -- reflects the hovered candle, or the latest one */}
+            {displayCandle ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-1 text-xs font-mono">
+                <span className="text-slate-400 dark:text-slate-500">
+                  O <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.open.toFixed(6)}</span>
+                </span>
+                <span className="text-slate-400 dark:text-slate-500">
+                  H <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.high.toFixed(6)}</span>
+                </span>
+                <span className="text-slate-400 dark:text-slate-500">
+                  L <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.low.toFixed(6)}</span>
+                </span>
+                <span className="text-slate-400 dark:text-slate-500">
+                  C <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.close.toFixed(6)}</span>
+                </span>
+                <span className={`font-semibold ${displayCandle.change >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                  {displayCandle.change >= 0 ? "+" : ""}{displayCandle.change.toFixed(6)} ({displayCandle.changePercent >= 0 ? "+" : ""}{displayCandle.changePercent.toFixed(2)}%)
+                </span>
+              </div>
+            ) : (
+              <div className="h-4 mb-1" />
+            )}
+
+            <div className="flex items-center gap-1.5 mb-2 text-xs text-slate-400 dark:text-slate-500 font-mono">
+              <Activity className="w-3 h-3" />
+              Volume <span className="text-slate-600 dark:text-slate-300">{displayCandle ? displayCandle.volume.toLocaleString() : "—"}</span>
+            </div>
+
+            <div className="flex items-baseline justify-between mb-3">
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl font-bold text-amber-500 dark:text-amber-400">{priceSOL.toFixed(6)} SOL</span>
+                {stats && stats.priceChange24h !== null && (
+                  <span className={`text-base font-semibold ${stats.priceChange24h >= 0 ? "text-emerald-500 dark:text-emerald-400" : "text-rose-500"}`}>
+                    {stats.priceChange24h >= 0 ? "+" : ""}{stats.priceChange24h.toFixed(2)}%
+                    <span className="text-xs text-slate-400 dark:text-slate-500 font-normal ml-1">24hr</span>
+                  </span>
+                )}
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-slate-400 dark:text-slate-500">ATH</div>
+                <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                  {stats ? `${lamportsToSol(stats.athPrice).toFixed(6)} SOL` : "—"}
+                </div>
+              </div>
+            </div>
+
+            <div className="relative">
+              <div ref={chartContainerRef} style={{ width: "100%", height: "420px", cursor: "crosshair" }} />
+
+              {(!candles || candles.length === 0) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                  <BarChart3 className="w-8 h-8 text-slate-300 dark:text-slate-700" />
+                  <p className="text-sm text-slate-400 dark:text-slate-500">No trades yet on this market.</p>
+                  <p className="text-xs text-slate-300 dark:text-slate-600">Be the first to buy shares below.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom toolbar: resolution + UTC clock + scale mode */}
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5 dark:border-white/5">
               <div className="flex items-center gap-1 text-xs font-mono">
                 {RESOLUTIONS.map(({ key, label }) => (
                   <button type="button"
@@ -483,22 +637,52 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                   </button>
                 ))}
               </div>
+
+              <div className="flex items-center gap-2 text-xs font-mono text-slate-400 dark:text-slate-500">
+                <span>{now !== null ? new Date(now).toLocaleTimeString("en-US", { hour12: false, timeZone: "UTC" }) : "--:--:--"} UTC</span>
+                <span className="text-slate-300 dark:text-slate-600">|</span>
+                <button type="button"
+                  onClick={() => {
+                    setPriceScaleMode("percentage");
+                    chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Percentage });
+                  }}
+                  className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "percentage" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
+                >
+                  %
+                </button>
+                <button type="button"
+                  onClick={() => {
+                    setPriceScaleMode("log");
+                    chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Logarithmic });
+                  }}
+                  className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "log" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
+                >
+                  log
+                </button>
+                <button type="button"
+                  onClick={() => {
+                    setPriceScaleMode("normal");
+                    chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Normal, autoScale: true });
+                    chartRef.current?.timeScale().fitContent();
+                  }}
+                  className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "normal" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
+                >
+                  auto
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-baseline gap-3 mb-3">
-              <span className="text-3xl font-bold text-amber-500 dark:text-amber-400">{priceSOL.toFixed(6)} SOL</span>
-            </div>
-
-            <div className="relative">
-              <div ref={chartContainerRef} style={{ width: "100%", height: "420px" }} />
-
-              {(!candles || candles.length === 0) && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
-                  <BarChart3 className="w-8 h-8 text-slate-300 dark:text-slate-700" />
-                  <p className="text-sm text-slate-400 dark:text-slate-500">No trades yet on this market.</p>
-                  <p className="text-xs text-slate-300 dark:text-slate-600">Be the first to buy shares below.</p>
-                </div>
-              )}
+            {/* Footer stats -- computed from the real candles currently loaded */}
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-black/5 dark:border-white/5">
+              <div className="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
+                <span>Avg Vol: <span className="text-slate-600 dark:text-slate-300 font-medium">{chartStats.avgVolume.toLocaleString()}</span></span>
+                <span>Total Vol: <span className="text-slate-600 dark:text-slate-300 font-medium">{chartStats.totalVolume.toLocaleString()}</span></span>
+                <span>Candles: <span className="text-slate-600 dark:text-slate-300 font-medium">{processedCandles.length}</span></span>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500" />Up</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500" />Down</span>
+              </div>
             </div>
           </div>
 
@@ -528,7 +712,10 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                     Buy
                   </button>
                   <button type="button"
-                    onClick={() => setTradeType("sell")}
+                    onClick={() => {
+                      setTradeType("sell");
+                      setAmountMode("Shares"); // sell.rs only ever burns a share count
+                    }}
                     className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${tradeType === "sell" ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-md shadow-red-500/25" : "text-slate-500 dark:text-slate-400"}`}
                   >
                     Sell
@@ -537,21 +724,80 @@ export function RealMarketDetail({ mint }: { mint: string }) {
 
                 <div className="space-y-4">
                   <div>
-                    <label htmlFor="real-trade-shares" className="text-xs text-slate-400 dark:text-slate-500 block mb-1.5">
-                      {tradeType === "buy" ? "Shares to buy" : "Shares to sell"}
-                    </label>
-                    <input
-                      id="real-trade-shares"
-                      type="number"
-                      min={0}
-                      step={1}
-                      placeholder="0"
-                      value={shareInput}
-                      onChange={(e) => setShareInput(e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      disabled={!canTrade}
-                      className={`w-full h-12 px-4 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                    />
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label htmlFor="real-trade-shares" className="text-xs text-slate-400 dark:text-slate-500 block">
+                        {tradeType === "buy" ? `Amount to Buy` : "Shares to Sell"}
+                      </label>
+                      {tradeType === "buy" && (
+                        <div className="flex bg-slate-100 dark:bg-white/5 rounded-lg p-0.5">
+                          {(["Shares", "SOL"] as const).map((mode) => (
+                            <button type="button"
+                              key={mode}
+                              onClick={() => {
+                                setAmountMode(mode);
+                                setShareInput("");
+                              }}
+                              className={`px-2 py-0.5 text-[10px] font-medium rounded-md transition-all ${amountMode === mode ? "bg-white dark:bg-white/10 shadow-sm text-slate-800 dark:text-white" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}
+                            >
+                              {mode}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative flex items-center">
+                      <input
+                        id="real-trade-shares"
+                        type="number"
+                        min={0}
+                        step={amountMode === "Shares" ? 1 : 0.001}
+                        placeholder="0"
+                        value={shareInput}
+                        onChange={(e) => setShareInput(e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        disabled={!canTrade}
+                        className={`w-full h-12 pl-4 pr-20 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                      />
+                      <div className="absolute right-2 flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-slate-400 pointer-events-none">{amountMode}</span>
+                        <div className="flex flex-col border-l border-slate-200 dark:border-white/10 pl-1.5">
+                          <button type="button"
+                            onClick={() => {
+                              const step = amountMode === "Shares" ? 1 : 0.001;
+                              setShareInput(((parseFloat(shareInput) || 0) + step).toString());
+                            }}
+                            disabled={!canTrade}
+                            aria-label="Increase amount"
+                            className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors disabled:opacity-40"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button type="button"
+                            onClick={() => {
+                              const step = amountMode === "Shares" ? 1 : 0.001;
+                              setShareInput(Math.max(0, (parseFloat(shareInput) || 0) - step).toString());
+                            }}
+                            disabled={!canTrade}
+                            aria-label="Decrease amount"
+                            className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors disabled:opacity-40"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 mt-2">
+                      {(amountMode === "Shares" ? [10, 50, 100, 500] : [0.001, 0.005, 0.01, 0.05]).map((amt) => (
+                        <button type="button"
+                          key={amt}
+                          disabled={!canTrade}
+                          onClick={() => setShareInput(amt.toString())}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${inset} hover:bg-emerald-50 dark:hover:bg-emerald-400/10 hover:text-emerald-700 dark:hover:text-emerald-400 disabled:opacity-40`}
+                        >
+                          {amt}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className={`p-4 space-y-2 ${inset}`}>
@@ -559,6 +805,12 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                       <span className="text-slate-400 dark:text-slate-500">Spot price</span>
                       <span className="font-medium">{priceSOL.toFixed(6)} SOL</span>
                     </div>
+                    {amountMode === "SOL" && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-400 dark:text-slate-500">Shares</span>
+                        <span className="font-medium">{shareAmount}</span>
+                      </div>
+                    )}
                     <div className="border-t border-black/5 dark:border-white/5 pt-2 flex justify-between items-center">
                       <span className="font-semibold text-sm">
                         {tradeType === "buy" ? "Total Cost" : "You Receive"} {quoting && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}
