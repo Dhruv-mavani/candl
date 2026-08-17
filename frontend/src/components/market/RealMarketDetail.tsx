@@ -15,15 +15,20 @@ import {
   Activity,
   ChevronUp,
   ChevronDown,
+  SlidersHorizontal,
+  Minus,
+  Eraser,
 } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineStyle, CrosshairMode, PriceScaleMode } from "lightweight-charts";
-import type { IChartApi, ISeriesApi, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
+import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineSeries, LineStyle, CrosshairMode, PriceScaleMode } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, SeriesType, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
 
 import { getMarket, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
 import { formatCountdown } from "@/lib/format";
 import { useSolPriceUsd } from "@/lib/solPrice";
+import { sma, ema, bollingerBands, rsi, macd, vwap } from "@/lib/indicators";
+import { TrendLinePrimitive, type TrendLinePoint } from "@/lib/trendLinePrimitive";
 import {
   useCandlProgram,
   deriveCandlPdas,
@@ -286,6 +291,24 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const priceLineRef = useRef<IPriceLine | null>(null);
   const [priceScaleMode, setPriceScaleMode] = useState<"normal" | "log" | "percentage">("normal");
 
+  // Indicators -- all computed client-side from the real candles already
+  // loaded (lightweight-charts ships none of this; see lib/indicators.ts).
+  const [indicators, setIndicators] = useState({ sma: false, ema: false, bb: false, vwap: false, rsi: false, macd: false });
+  const [indicatorsMenuOpen, setIndicatorsMenuOpen] = useState(false);
+  const overlaySeriesRef = useRef<ISeriesApi<SeriesType>[]>([]);
+  const oscillatorSeriesRef = useRef<ISeriesApi<SeriesType>[]>([]);
+
+  // Drawing tools -- lightweight-charts has none built in either.
+  const [drawingMode, setDrawingMode] = useState<"none" | "trendline" | "horizontal">("none");
+  const drawingModeRef = useRef(drawingMode);
+  useEffect(() => {
+    drawingModeRef.current = drawingMode;
+    if (drawingMode === "none") pendingTrendPointRef.current = null;
+  }, [drawingMode]);
+  const trendLinePrimitiveRef = useRef<TrendLinePrimitive | null>(null);
+  const pendingTrendPointRef = useRef<TrendLinePoint | null>(null);
+  const horizontalLinesRef = useRef<IPriceLine[]>([]);
+
   // Real OHLC readout for whichever candle the cursor is over -- null (falls
   // back to the latest real candle below) when the cursor isn't on the chart.
   const [crosshairData, setCrosshairData] = useState<{
@@ -379,6 +402,44 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     seriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
 
+    const trendLinePrimitive = new TrendLinePrimitive();
+    candleSeries.attachPrimitive(trendLinePrimitive);
+    trendLinePrimitiveRef.current = trendLinePrimitive;
+
+    const handleClick = (param: MouseEventParams) => {
+      const mode = drawingModeRef.current;
+      if (mode === "none" || !param.time || !param.point) return;
+
+      if (mode === "horizontal") {
+        const price = candleSeries.coordinateToPrice(param.point.y);
+        if (price === null) return;
+        const line = candleSeries.createPriceLine({
+          price,
+          color: "#3b82f6",
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: "",
+        });
+        horizontalLinesRef.current.push(line);
+        setDrawingMode("none");
+        return;
+      }
+
+      // trendline: first click sets the anchor, second click completes it.
+      const price = candleSeries.coordinateToPrice(param.point.y);
+      if (price === null) return;
+      const point: TrendLinePoint = { time: param.time, price };
+      if (!pendingTrendPointRef.current) {
+        pendingTrendPointRef.current = point;
+      } else {
+        trendLinePrimitiveRef.current?.addLine(pendingTrendPointRef.current, point);
+        pendingTrendPointRef.current = null;
+        setDrawingMode("none");
+      }
+    };
+    chart.subscribeClick(handleClick);
+
     const handleCrosshairMove = (param: MouseEventParams) => {
       const candleData = param.seriesData?.get(candleSeries) as { open: number; high: number; low: number; close: number } | undefined;
       const volData = param.seriesData?.get(volumeSeries) as { value: number } | undefined;
@@ -406,6 +467,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
 
     return () => {
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
+      chart.unsubscribeClick(handleClick);
       window.removeEventListener("resize", handleResize);
       chart.remove();
       // Without this, the mount-guard above (`if (chartRef.current) return`)
@@ -418,6 +480,10 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       seriesRef.current = null;
       volumeSeriesRef.current = null;
       priceLineRef.current = null;
+      trendLinePrimitiveRef.current = null;
+      overlaySeriesRef.current = [];
+      oscillatorSeriesRef.current = [];
+      horizontalLinesRef.current = [];
     };
   }, [marketLoading]);
 
@@ -449,6 +515,76 @@ export function RealMarketDetail({ mint }: { mint: string }) {
 
     chartRef.current?.timeScale().fitContent();
   }, [processedCandles]);
+
+  // Redraws every active indicator from the real candles already loaded.
+  // Oscillator panes (RSI/MACD) are torn down and rebuilt in a fixed order
+  // rather than incrementally added/removed -- with pane indices shifting
+  // whenever one is toggled off, incremental bookkeeping is far more failure
+  // -prone than just recomputing the (cheap, small) set from scratch.
+  useEffect(() => {
+    const chart = chartRef.current;
+    const candleSeries = seriesRef.current;
+    if (!chart || !candleSeries) return;
+
+    for (const s of overlaySeriesRef.current) chart.removeSeries(s);
+    overlaySeriesRef.current = [];
+    for (const s of oscillatorSeriesRef.current) chart.removeSeries(s);
+    oscillatorSeriesRef.current = [];
+    while (chart.panes().length > 1) chart.removePane(chart.panes().length - 1);
+
+    if (processedCandles.length === 0) return;
+
+    const times = processedCandles.map((c) => c.time);
+    const closes = processedCandles.map((c) => c.close);
+
+    const addOverlayLine = (values: (number | null)[], color: string, title: string, dashed = false) => {
+      const s = chart.addSeries(LineSeries, { color, lineWidth: 1, title, priceLineVisible: false, lastValueVisible: false, lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid });
+      s.setData(times.map((time, i) => ({ time, value: values[i] })).filter((d): d is { time: UTCTimestamp; value: number } => d.value !== null));
+      overlaySeriesRef.current.push(s);
+    };
+
+    if (indicators.sma) addOverlayLine(sma(closes, 20), "#f59e0b", "SMA 20");
+    if (indicators.ema) addOverlayLine(ema(closes, 20), "#a855f7", "EMA 20");
+    if (indicators.vwap) addOverlayLine(vwap(processedCandles), "#ec4899", "VWAP");
+    if (indicators.bb) {
+      const bands = bollingerBands(closes, 20, 2);
+      addOverlayLine(bands.map((b) => b.upper), "#38bdf8", "BB Upper", true);
+      addOverlayLine(bands.map((b) => b.middle), "#38bdf8", "BB Middle");
+      addOverlayLine(bands.map((b) => b.lower), "#38bdf8", "BB Lower", true);
+    }
+
+    const addOscillatorPane = () => chart.addPane().paneIndex();
+
+    if (indicators.rsi) {
+      const paneIndex = addOscillatorPane();
+      const values = rsi(closes, 14);
+      const s = chart.addSeries(LineSeries, { color: "#3b82f6", lineWidth: 1, title: "RSI 14", priceLineVisible: false, lastValueVisible: false }, paneIndex);
+      s.setData(times.map((time, i) => ({ time, value: values[i] })).filter((d): d is { time: UTCTimestamp; value: number } => d.value !== null));
+      s.createPriceLine({ price: 70, color: "rgba(244,63,94,0.4)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: "" });
+      s.createPriceLine({ price: 30, color: "rgba(16,185,129,0.4)", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: "" });
+      oscillatorSeriesRef.current.push(s);
+    }
+
+    if (indicators.macd) {
+      const paneIndex = addOscillatorPane();
+      const values = macd(closes, 12, 26, 9);
+      const histSeries = chart.addSeries(
+        HistogramSeries,
+        { priceLineVisible: false, lastValueVisible: false, title: "MACD Histogram" },
+        paneIndex
+      );
+      histSeries.setData(
+        times
+          .map((time, i) => ({ time, value: values[i].histogram, color: (values[i].histogram ?? 0) >= 0 ? "rgba(16,185,129,0.5)" : "rgba(244,63,94,0.5)" }))
+          .filter((d): d is { time: UTCTimestamp; value: number; color: string } => d.value !== null)
+      );
+      const macdLine = chart.addSeries(LineSeries, { color: "#3b82f6", lineWidth: 1, title: "MACD", priceLineVisible: false, lastValueVisible: false }, paneIndex);
+      macdLine.setData(times.map((time, i) => ({ time, value: values[i].macd })).filter((d): d is { time: UTCTimestamp; value: number } => d.value !== null));
+      const signalLine = chart.addSeries(LineSeries, { color: "#f59e0b", lineWidth: 1, title: "Signal", priceLineVisible: false, lastValueVisible: false }, paneIndex);
+      signalLine.setData(times.map((time, i) => ({ time, value: values[i].signal })).filter((d): d is { time: UTCTimestamp; value: number } => d.value !== null));
+      oscillatorSeriesRef.current.push(histSeries, macdLine, signalLine);
+    }
+  }, [processedCandles, indicators]);
 
   if (marketLoading) {
     return (
@@ -581,13 +717,89 @@ export function RealMarketDetail({ mint }: { mint: string }) {
         {/* ── Right: Chart + Trading ── */}
         <div className="lg:col-span-2 space-y-5">
           <div className={`rounded-2xl p-5 ${glass}`}>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                 <span className="font-semibold text-sm">{market.metadata?.name ?? "Market"}/SOL</span>
                 <span className="text-xs text-slate-400 dark:text-slate-500">· {resolution.toUpperCase()} · Candl</span>
               </div>
+
+              <div className="flex items-center gap-1">
+                {/* Drawing tools -- lightweight-charts has none built in, these are hand-built (see lib/trendLinePrimitive.ts) */}
+                <button type="button"
+                  onClick={() => setDrawingMode(drawingMode === "trendline" ? "none" : "trendline")}
+                  title="Trend line -- click two points on the chart"
+                  className={`p-1.5 rounded-lg transition-all ${drawingMode === "trendline" ? "bg-blue-500/15 text-blue-500" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                </button>
+                <button type="button"
+                  onClick={() => setDrawingMode(drawingMode === "horizontal" ? "none" : "horizontal")}
+                  title="Horizontal line -- click a price level on the chart"
+                  className={`p-1.5 rounded-lg transition-all ${drawingMode === "horizontal" ? "bg-blue-500/15 text-blue-500" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <button type="button"
+                  onClick={() => {
+                    trendLinePrimitiveRef.current?.clear();
+                    for (const line of horizontalLinesRef.current) seriesRef.current?.removePriceLine(line);
+                    horizontalLinesRef.current = [];
+                    setDrawingMode("none");
+                  }}
+                  title="Clear all drawings"
+                  className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-all"
+                >
+                  <Eraser className="w-3.5 h-3.5" />
+                </button>
+
+                <span className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-1" />
+
+                <div className="relative">
+                  <button type="button"
+                    onClick={() => setIndicatorsMenuOpen((open) => !open)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${indicatorsMenuOpen || Object.values(indicators).some(Boolean) ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    Indicators
+                  </button>
+
+                  {indicatorsMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setIndicatorsMenuOpen(false)} />
+                      <div className={`absolute right-0 top-full mt-2 w-48 p-2 rounded-xl z-20 ${glass}`}>
+                        {(
+                          [
+                            ["sma", "SMA (20)"],
+                            ["ema", "EMA (20)"],
+                            ["bb", "Bollinger Bands"],
+                            ["vwap", "VWAP"],
+                            ["rsi", "RSI (14)"],
+                            ["macd", "MACD"],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <label key={key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5">
+                            <input
+                              type="checkbox"
+                              checked={indicators[key]}
+                              onChange={() => setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))}
+                              className="accent-emerald-500"
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {drawingMode !== "none" && (
+              <p className="text-[11px] text-blue-500 mb-1">
+                {drawingMode === "trendline" ? "Click two points on the chart to draw a trend line." : "Click a point on the chart to place a horizontal line."}
+              </p>
+            )}
 
             {/* OHLC data bar -- reflects the hovered candle, or the latest one */}
             {displayCandle ? (
