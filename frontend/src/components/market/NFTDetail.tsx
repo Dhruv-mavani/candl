@@ -537,6 +537,7 @@ function MockNFTDetail({ nft }: { nft: (typeof nftData)[number] }) {
                     placeholder="0.00"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className={`w-full h-12 pl-4 pr-24 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                   />
                   <div className="absolute right-2 flex items-center gap-2">

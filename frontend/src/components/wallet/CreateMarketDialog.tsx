@@ -140,6 +140,7 @@ export function CreateMarketDialog({
                 value={durationDays}
                 disabled={step === "submitting"}
                 onChange={(e) => setDurationDays(Number(e.target.value))}
+                onWheel={(e) => e.currentTarget.blur()}
               />
               <p className="text-xs text-muted-foreground">
                 {MIN_DURATION_DAYS}–{MAX_DURATION_DAYS} days. Can be extended later, never shortened.
