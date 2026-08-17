@@ -2,13 +2,14 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { ArrowLeft, TrendingUp, DollarSign, BarChart3, Droplets, AlertTriangle, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, TrendingUp, DollarSign, BarChart3, Droplets, AlertTriangle, Loader2, CheckCircle2, Clock } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineStyle } from "lightweight-charts";
 import type { IChartApi, ISeriesApi, UTCTimestamp, IPriceLine } from "lightweight-charts";
 
 import { getMarket, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
+import { formatCountdown } from "@/lib/format";
 import {
   useCandlProgram,
   deriveCandlPdas,
@@ -63,12 +64,12 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const program = useCandlProgram();
   const nftMint = useMemo(() => new PublicKey(mint), [mint]);
 
-  // Tracked in state (not read directly during render) so expiry checks stay pure -- market durations are measured in days, so a 30s tick is plenty fresh.
+  // Tracked in state (not read directly during render) so expiry checks stay pure -- ticks every second so the countdown badge reads live.
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     const tick = () => setNow(Date.now());
     tick();
-    const interval = setInterval(tick, 30_000);
+    const interval = setInterval(tick, 1_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -407,6 +408,24 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                 <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">Live on devnet</div>
                 <h1 className="text-xl font-bold">{market.metadata?.name ?? "Unnamed Market"}</h1>
               </div>
+
+              {market.state === "ACTIVE" && now !== null && (
+                <div
+                  className={`flex items-center gap-2 p-3 ${inset} ${
+                    isExpired ? "border-amber-400/40" : ""
+                  }`}
+                >
+                  <Clock className={`w-4 h-4 shrink-0 ${isExpired ? "text-amber-500" : "text-emerald-500 dark:text-emerald-400"}`} />
+                  <div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500">
+                      {isExpired ? "Market closed" : "Closes in"}
+                    </div>
+                    <div className={`font-semibold text-sm tabular-nums ${isExpired ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                      {isExpired ? "Awaiting settlement" : formatCountdown(market.expiresAt, now)}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 {[

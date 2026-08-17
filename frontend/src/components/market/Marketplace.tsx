@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import useSWR from "swr";
-import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle, Landmark } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle, Landmark, Clock } from "lucide-react";
 import { nftData } from "@/lib/mockData";
 import { getMarkets, getProtocolStats, type RealMarket } from "@/lib/api";
+import { formatCountdown } from "@/lib/format";
 
 function lamportsToSol(value: number) {
   return value / 1e9;
@@ -18,7 +19,7 @@ function truncateAddress(address: string) {
   return `${address.slice(0, 4)}..${address.slice(-4)}`;
 }
 
-function RealMarketCard({ market }: { market: RealMarket }) {
+function RealMarketCard({ market, now }: { market: RealMarket; now: number }) {
   const name = market.metadata?.name ?? "Unnamed Market";
   const stateColor =
     market.state === "ACTIVE"
@@ -26,6 +27,7 @@ function RealMarketCard({ market }: { market: RealMarket }) {
       : market.state === "SETTLING"
         ? "bg-amber-500/85"
         : "bg-slate-500/85";
+  const isExpired = new Date(market.expiresAt).getTime() < now;
 
   return (
     <Link
@@ -65,6 +67,13 @@ function RealMarketCard({ market }: { market: RealMarket }) {
           <div className="text-lg font-bold text-slate-900 dark:text-white truncate">{name}</div>
         </div>
 
+        {market.state === "ACTIVE" && (
+          <div className={`flex items-center gap-1.5 text-xs font-medium tabular-nums ${isExpired ? "text-amber-500" : "text-slate-500 dark:text-slate-400"}`}>
+            <Clock className="w-3.5 h-3.5 shrink-0" />
+            {isExpired ? "Closed -- awaiting settlement" : `Closes in ${formatCountdown(market.expiresAt, now)}`}
+          </div>
+        )}
+
         <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-700/50">
           <div>
             <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Reserve</div>
@@ -90,6 +99,13 @@ export function Marketplace() {
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [sortBy, setSortBy] = useState("volume");
+
+  // Shared by every RealMarketCard's countdown so they all tick from one interval, not one per card.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const { data: realMarkets, error: realMarketsError, isLoading: realMarketsLoading } = useSWR(
     "/api/v1/markets",
@@ -229,7 +245,7 @@ export function Marketplace() {
         {realMarkets && realMarkets.length > 0 && (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {realMarkets.map((market) => (
-              <RealMarketCard key={market.pubkey} market={market} />
+              <RealMarketCard key={market.pubkey} market={market} now={now} />
             ))}
           </div>
         )}
