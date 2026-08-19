@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, ShoppingBag, User, Sun, Moon, Users, Landmark, LogOut } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, User, Sun, Moon, Users, Landmark, LogOut, Plus, ChevronDown, Sparkles, Download } from "lucide-react";
 import { Button } from "../common/button";
 import { CandlLogo } from "../common/CandlLogo";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import { CreateNFTDialog } from "../wallet/CreateNFTDialog";
@@ -29,6 +29,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [lastScrollY, setLastScrollY] = useState(0);
   const [createNFTOpen, setCreateNFTOpen] = useState(false);
   const [importNFTOpen, setImportNFTOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const createMenuRef = useRef<HTMLDivElement>(null);
 
   const isAdminRoute = location?.startsWith("/admin") ?? false;
 
@@ -84,6 +86,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       setIsDark(stored === "dark");
     }
   }, []);
+
+  useEffect(() => {
+    if (!createMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) {
+        setCreateMenuOpen(false);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCreateMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [createMenuOpen]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -176,23 +196,56 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </button>
 
               {!isAdminRoute && !WAITLIST_MODE && connected && (
-                <div className="hidden sm:flex items-center gap-2">
+                <div className="hidden sm:block relative" ref={createMenuRef}>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCreateNFTOpen(true)}
+                    onClick={() => setCreateMenuOpen((o) => !o)}
+                    aria-haspopup="menu"
+                    aria-expanded={createMenuOpen}
                     className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5"
                   >
-                    Create NFT
+                    <Plus className="w-4 h-4" /> Create
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${createMenuOpen ? "rotate-180" : ""}`} />
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setImportNFTOpen(true)}
-                    className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5"
-                  >
-                    Import NFT
-                  </Button>
+
+                  {createMenuOpen && (
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-full mt-2 w-48 rounded-xl overflow-hidden
+                        bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl
+                        border border-emerald-200/60 dark:border-emerald-500/15
+                        shadow-[0_8px_30px_rgba(16,185,129,0.12)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)]"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setCreateMenuOpen(false);
+                          setCreateNFTOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-left
+                          text-slate-700 dark:text-slate-200 hover:bg-emerald-100/60 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        Create NFT
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setCreateMenuOpen(false);
+                          setImportNFTOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-left
+                          text-slate-700 dark:text-slate-200 hover:bg-emerald-100/60 dark:hover:bg-white/5 transition-colors
+                          border-t border-emerald-200/40 dark:border-white/5"
+                      >
+                        <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        Import NFT
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
