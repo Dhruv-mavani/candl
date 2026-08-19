@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import useSWR from "swr";
-import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle, Clock, Landmark, Users } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle, Clock } from "lucide-react";
 import { nftData } from "@/lib/mockData";
 import { getMarkets, type RealMarket } from "@/lib/api";
 import { formatCountdown } from "@/lib/format";
@@ -130,26 +130,9 @@ export function Marketplace() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
       {/* Header */}
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold mb-1">NFT Marketplace</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Trade fractional shares of premium NFTs</p>
-        </div>
-
-        <nav className={`flex items-center gap-1 p-1 rounded-2xl ${glass}`}>
-          <Link href="/admin/protocol">
-            <button type="button" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-              <Landmark className="w-4 h-4" />
-              Protocol Earnings
-            </button>
-          </Link>
-          <Link href="/admin">
-            <button type="button" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-              <Users className="w-4 h-4" />
-              Waitlist
-            </button>
-          </Link>
-        </nav>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-1">NFT Marketplace</h1>
+        <p className="text-slate-500 dark:text-slate-400 text-sm">Trade fractional shares of premium NFTs</p>
       </div>
 
       {/* Search + Filters */}
