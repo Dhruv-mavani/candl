@@ -6,6 +6,8 @@ export interface RealMarketMetadata {
   symbol: string | null;
   imageUrl: string | null;
   description: string | null;
+  /** Raw NFT metadata attributes array, e.g. [{ trait_type: "category", value: "Art" }] -- shape isn't guaranteed since any NFT can supply arbitrary attributes. */
+  attributes: { trait_type?: string; value?: string }[] | null;
 }
 
 export interface RealMarket {

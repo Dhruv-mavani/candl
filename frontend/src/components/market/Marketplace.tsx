@@ -1,10 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import useSWR from "swr";
-import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle, Clock } from "lucide-react";
-import { nftData } from "@/lib/mockData";
+import { Search, ImageOff, AlertTriangle, Clock } from "lucide-react";
 import { getMarkets, type RealMarket } from "@/lib/api";
 import { formatCountdown } from "@/lib/format";
 
@@ -94,7 +92,7 @@ function RealMarketCard({ market, now }: { market: RealMarket; now: number }) {
 export function Marketplace() {
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState("all");
-  const [sortBy, setSortBy] = useState("volume");
+  const [statusFilter, setStatusFilter] = useState<"all" | "ACTIVE" | "SETTLING">("all");
 
   // Shared by every RealMarketCard's countdown so they all tick from one interval, not one per card.
   const [now, setNow] = useState(() => Date.now());
@@ -111,21 +109,20 @@ export function Marketplace() {
 
   const categories = ["all", "art", "gaming", "collectibles"];
 
-  const filteredNFTs = nftData
-    .filter((nft) => {
-      const matchesSearch =
-        nft.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        nft.collection.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory =
-        category === "all" || nft.category.toLowerCase() === category.toLowerCase();
-      return matchesSearch && matchesCategory;
+  const filteredRealMarkets = (realMarkets ?? [])
+    .filter((market) => {
+      const name = market.metadata?.name ?? "";
+      const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase());
+      const categoryAttr = market.metadata?.attributes?.find((a) => a.trait_type === "category")?.value;
+      const matchesCategory = category === "all" || categoryAttr?.toLowerCase() === category.toLowerCase();
+      const matchesStatus = statusFilter === "all" || market.state === statusFilter;
+      return matchesSearch && matchesCategory && matchesStatus;
     })
-    .sort((a, b) => {
-      if (sortBy === "volume") return b.volume24h - a.volume24h;
-      if (sortBy === "price") return b.currentPrice - a.currentPrice;
-      if (sortBy === "change") return b.priceChange24h - a.priceChange24h;
-      return 0;
-    });
+    .sort((a, b) => b.volume - a.volume);
+
+  const activeMarkets = filteredRealMarkets.filter((m) => m.state === "ACTIVE");
+  const settlingMarkets = filteredRealMarkets.filter((m) => m.state === "SETTLING");
+  const settledMarkets = filteredRealMarkets.filter((m) => m.state === "SETTLED");
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
@@ -166,18 +163,18 @@ export function Marketplace() {
             ))}
           </div>
 
-          {/* Sort pills */}
+          {/* Status pills */}
           <div className={`flex items-center gap-1 p-1 rounded-2xl ${glass}`}>
             {[
-              { key: "volume", label: "Volume" },
-              { key: "price", label: "Price" },
-              { key: "change", label: "24h %" },
+              { key: "all", label: "All" },
+              { key: "ACTIVE", label: "Live" },
+              { key: "SETTLING", label: "Settling" },
             ].map(({ key, label }) => (
               <button type="button"
                 key={key}
-                onClick={() => setSortBy(key)}
+                onClick={() => setStatusFilter(key as "all" | "ACTIVE" | "SETTLING")}
                 className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-all duration-150
-                  ${sortBy === key
+                  ${statusFilter === key
                     ? "bg-amber-400/20 dark:bg-amber-400/15 text-amber-700 dark:text-amber-300 border border-amber-300/40 dark:border-amber-400/20"
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                   }`}
@@ -189,112 +186,82 @@ export function Marketplace() {
         </div>
       </div>
 
-      {/* Live Markets (real, on-chain devnet data) */}
-      <div className="mb-10">
-        <h2 className="text-xl font-bold mb-1">Live Markets</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-          Real markets created on Solana devnet through Candl.
-        </p>
+      {/* Real, on-chain devnet markets -- split by state so an expired/settling
+          market never gets mistaken for one still open to trade. */}
+      {realMarketsLoading && (
+        <div className={`text-center py-10 rounded-2xl ${glass} mb-10`}>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Loading live markets…</p>
+        </div>
+      )}
 
-        {realMarketsLoading && (
-          <div className={`text-center py-10 rounded-2xl ${glass}`}>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Loading live markets…</p>
-          </div>
-        )}
+      {realMarketsError && (
+        <div className={`flex items-center gap-3 p-4 rounded-2xl ${glass} mb-10`}>
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Couldn&apos;t reach the Candl backend. Is it running at{" "}
+            {process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}?
+          </p>
+        </div>
+      )}
 
-        {realMarketsError && (
-          <div className={`flex items-center gap-3 p-4 rounded-2xl ${glass}`}>
-            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Couldn&apos;t reach the Candl backend. Is it running at{" "}
-              {process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"}?
-            </p>
-          </div>
-        )}
+      {realMarkets && realMarkets.length === 0 && (
+        <div className={`text-center py-10 rounded-2xl ${glass} mb-10`}>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            No markets created yet. Deposit an NFT from your Portfolio to create one.
+          </p>
+        </div>
+      )}
 
-        {realMarkets && realMarkets.length === 0 && (
-          <div className={`text-center py-10 rounded-2xl ${glass}`}>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              No markets created yet. Deposit an NFT from your Portfolio to create one.
-            </p>
-          </div>
-        )}
+      {realMarkets && realMarkets.length > 0 && filteredRealMarkets.length === 0 && (
+        <div className={`text-center py-10 rounded-2xl ${glass} mb-10`}>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            No markets in the &quot;{category}&quot; category yet.
+          </p>
+        </div>
+      )}
 
-        {realMarkets && realMarkets.length > 0 && (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {realMarkets.map((market) => (
+      {activeMarkets.length > 0 && (
+        <div className="mb-10">
+          <h2 className="text-xl font-bold mb-1">Live Markets</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            Open for trading right now.
+          </p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
+            {activeMarkets.map((market) => (
               <RealMarketCard key={market.pubkey} market={market} now={now} />
             ))}
           </div>
-        )}
-      </div>
-
-      {/* Demo Grid (sample data, not backed by real markets) */}
-      <div className="mb-4">
-        <h2 className="text-xl font-bold mb-1">Demo Markets</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Sample data illustrating what a busy Candl market looks like.
-        </p>
-      </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-        {filteredNFTs.map((nft) => (
-          <Link key={nft.id} href={`/market/${nft.id}`}>
-            <div className={`p-2.5 bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-3xl shadow-xl transition duration-300 group cursor-pointer hover:-translate-y-1 hover:shadow-emerald-500/10 hover:border-emerald-400/40`}>
-              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl">
-                <Image
-                  src={nft.image}
-                  alt={nft.name}
-                  fill
-                  sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                  className="object-cover group-hover:scale-105 transition-transform duration-700"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-white/10" />
-                <div
-                  className={`absolute top-3 right-3 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg flex items-center gap-1
-                    ${nft.priceChange24h >= 0 ? "bg-emerald-500/85" : "bg-rose-500/85"}`}
-                >
-                  {nft.priceChange24h >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                  {nft.priceChange24h >= 0 ? "+" : ""}{nft.priceChange24h.toFixed(1)}%
-                </div>
-                <div className="absolute top-3 left-3 bg-black/40 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-medium">
-                  {nft.category}
-                </div>
-              </div>
-
-              <div className="p-4 space-y-3">
-                <div>
-                  <div className="text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400 uppercase">{nft.collection}</div>
-                  <div className="text-lg font-bold text-slate-900 dark:text-white truncate">{nft.name}</div>
-                </div>
-                
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-700/50">
-                  <div>
-                    <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Share Price</div>
-                    <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">${nft.currentPrice}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">24h Volume</div>
-                    <div className="text-base font-bold text-slate-700 dark:text-slate-300">${(nft.volume24h / 1000).toFixed(0)}K</div>
-                  </div>
-                </div>
-                
-                <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/50 flex items-center justify-between text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                  <span>{nft.circulatingSupply.toLocaleString()} shares</span>
-                  <span>{nft.holders} holders</span>
-                </div>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      {filteredNFTs.length === 0 && (
-        <div className={`text-center py-16 rounded-2xl mt-4 ${glass}`}>
-          <Filter className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-4" />
-          <h3 className="text-lg font-semibold mb-1">No NFTs found</h3>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Try adjusting your search or filters</p>
         </div>
       )}
+
+      {settlingMarkets.length > 0 && (
+        <div className="mb-10">
+          <h2 className="text-xl font-bold mb-1">Settling Markets</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            Trading closed -- shares can be redeemed once settlement finishes.
+          </p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
+            {settlingMarkets.map((market) => (
+              <RealMarketCard key={market.pubkey} market={market} now={now} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {settledMarkets.length > 0 && (
+        <div className="mb-10">
+          <h2 className="text-xl font-bold mb-1">Settled Markets</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            Fully redeemed -- kept here for reference.
+          </p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
+            {settledMarkets.map((market) => (
+              <RealMarketCard key={market.pubkey} market={market} now={now} />
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
