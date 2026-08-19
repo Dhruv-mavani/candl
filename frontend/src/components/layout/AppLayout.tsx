@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, ShoppingBag, User, Sun, Moon } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LayoutDashboard, ShoppingBag, User, Sun, Moon, Users, Landmark, LogOut } from "lucide-react";
 import { Button } from "../common/button";
 import { CandlLogo } from "../common/CandlLogo";
 import { useState, useEffect } from "react";
@@ -21,6 +21,7 @@ const WAITLIST_MODE = process.env.NEXT_PUBLIC_WAITLIST_MODE === "true";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = usePathname();
+  const router = useRouter();
   const { connected } = useWallet();
   const [mounted, setMounted] = useState(false);
   const [isDark, setIsDark] = useState(true);
@@ -29,7 +30,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [createNFTOpen, setCreateNFTOpen] = useState(false);
   const [importNFTOpen, setImportNFTOpen] = useState(false);
 
-  const navLinks = WAITLIST_MODE
+  const isAdminRoute = location?.startsWith("/admin") ?? false;
+
+  const handleAdminLogout = () => {
+    sessionStorage.removeItem("candl-admin-secret");
+    // Hard navigation, not router.push -- each admin page holds its own local
+    // `secret` state that a client-side route change wouldn't reset if we're
+    // already on /admin or navigating between two admin pages.
+    window.location.href = "/admin";
+  };
+
+  const navLinks = isAdminRoute
+    ? [
+        { to: "/admin", label: "Dashboard", icon: LayoutDashboard },
+        { to: "/admin/waitlist", label: "Waitlist", icon: Users },
+        { to: "/admin/protocol", label: "Protocol Earnings", icon: Landmark },
+      ]
+    : WAITLIST_MODE
     ? []
     : connected
     ? [
@@ -76,7 +93,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isActive = (path: string) => {
     if (!location) return false;
-    if (path === "/") return location === "/";
+    // Exact match for index-style routes -- otherwise "/admin" (Dashboard)
+    // would stay highlighted as a prefix match on /admin/waitlist etc. too.
+    if (path === "/" || path === "/admin") return location === path;
     return location.startsWith(path);
   };
 
@@ -156,7 +175,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
               </button>
 
-              {!WAITLIST_MODE && connected && (
+              {!isAdminRoute && !WAITLIST_MODE && connected && (
                 <div className="hidden sm:flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -177,7 +196,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
               )}
 
-              {WAITLIST_MODE ? (
+              {isAdminRoute ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAdminLogout}
+                  className="h-9 rounded-xl border-emerald-200/50 dark:border-white/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/50 dark:hover:bg-white/5"
+                >
+                  <LogOut className="w-4 h-4" /> Log out
+                </Button>
+              ) : WAITLIST_MODE ? (
                 <Link href="/waitlist">
                   <Button
                     size="sm"

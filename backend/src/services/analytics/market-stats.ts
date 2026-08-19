@@ -36,7 +36,7 @@ async function getVolumeSince(db: Db, marketPubkey: string, since: Date): Promis
 }
 
 /** Price of the trade closest to (at or before) the cutoff, for computing % change. */
-async function getPriceAsOf(db: Db, marketPubkey: string, cutoff: Date): Promise<number | null> {
+export async function getPriceAsOf(db: Db, marketPubkey: string, cutoff: Date): Promise<number | null> {
   const [before] = await db
     .select({ price: trades.price })
     .from(trades)

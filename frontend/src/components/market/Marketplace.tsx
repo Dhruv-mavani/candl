@@ -3,14 +3,10 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import useSWR from "swr";
-import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle, Landmark, Clock } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, Filter, ImageOff, AlertTriangle, Clock, Landmark, Users } from "lucide-react";
 import { nftData } from "@/lib/mockData";
-import { getMarkets, getProtocolStats, type RealMarket } from "@/lib/api";
+import { getMarkets, type RealMarket } from "@/lib/api";
 import { formatCountdown } from "@/lib/format";
-
-function lamportsToSol(value: number) {
-  return value / 1e9;
-}
 
 const glass =
   "bg-white/50 dark:bg-white/[0.05] backdrop-blur-xl border border-white/70 dark:border-white/10 shadow-[0_8px_32px_rgba(16,185,129,0.07)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.3)]";
@@ -113,8 +109,6 @@ export function Marketplace() {
     { refreshInterval: 15000 }
   );
 
-  const { data: protocolStats } = useSWR("/api/v1/protocol/stats", getProtocolStats, { refreshInterval: 30000 });
-
   const categories = ["all", "art", "gaming", "collectibles"];
 
   const filteredNFTs = nftData
@@ -142,19 +136,20 @@ export function Marketplace() {
           <p className="text-slate-500 dark:text-slate-400 text-sm">Trade fractional shares of premium NFTs</p>
         </div>
 
-        {protocolStats && (
-          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl ${glass}`}>
-            <Landmark className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />
-            <div>
-              <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                Protocol Revenue (devnet)
-              </div>
-              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                {lamportsToSol(protocolStats.totalProtocolEarnings).toFixed(6)} SOL
-              </div>
-            </div>
-          </div>
-        )}
+        <nav className={`flex items-center gap-1 p-1 rounded-2xl ${glass}`}>
+          <Link href="/admin/protocol">
+            <button type="button" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+              <Landmark className="w-4 h-4" />
+              Protocol Earnings
+            </button>
+          </Link>
+          <Link href="/admin">
+            <button type="button" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+              <Users className="w-4 h-4" />
+              Waitlist
+            </button>
+          </Link>
+        </nav>
       </div>
 
       {/* Search + Filters */}

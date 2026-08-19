@@ -12,7 +12,7 @@ type Db = ReturnType<typeof getDb>;
  * back into each side requires the market's own fee_protocol_bps/fee_creator_bps
  * (now captured correctly per-market, see decode.ts's fetchMarketConfig).
  */
-function creatorShareOfFee(feePaid: number, protocolBps: number, creatorBps: number): number {
+export function creatorShareOfFee(feePaid: number, protocolBps: number, creatorBps: number): number {
   const totalBps = protocolBps + creatorBps;
   if (totalBps === 0) return 0;
   return (feePaid * creatorBps) / totalBps;

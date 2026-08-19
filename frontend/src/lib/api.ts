@@ -114,8 +114,109 @@ export function getProtocolStats(): Promise<ProtocolStats> {
   return fetchJson<ProtocolStats>("/api/v1/protocol/stats");
 }
 
+export interface ProtocolHistoryPoint {
+  timestamp: string;
+  cumulativeVolumeLamports: number;
+  cumulativeProtocolEarningsLamports: number;
+}
+
+export function getProtocolEarningsHistory(points?: number): Promise<ProtocolHistoryPoint[]> {
+  const query = points ? `?points=${points}` : "";
+  return fetchJson<ProtocolHistoryPoint[]>(`/api/v1/protocol/earnings/history${query}`);
+}
+
+export interface ProtocolMarketEarnings {
+  marketPubkey: string;
+  nftMint: string;
+  nftName: string | null;
+  nftImageUrl: string | null;
+  protocolEarnedLamports: number;
+  volumeLamports: number;
+}
+
+export function getProtocolEarningsByMarket(limit?: number): Promise<ProtocolMarketEarnings[]> {
+  const query = limit ? `?limit=${limit}` : "";
+  return fetchJson<ProtocolMarketEarnings[]>(`/api/v1/protocol/earnings/by-market${query}`);
+}
+
 export function getCreatorEarnings(pubkey: string): Promise<CreatorEarnings> {
   return fetchJson<CreatorEarnings>(`/api/v1/creators/${pubkey}/earnings`);
+}
+
+export interface PortfolioHolding {
+  marketPubkey: string;
+  nftMint: string;
+  nftName: string | null;
+  nftImageUrl: string | null;
+  marketState: string;
+  shares: number;
+  avgCostLamports: number;
+  currentPriceLamports: number;
+  costBasisLamports: number;
+  valueLamports: number;
+}
+
+export interface TraderPortfolio {
+  totalValueLamports: number;
+  totalCostLamports: number;
+  holdings: PortfolioHolding[];
+}
+
+export function getTraderPortfolio(pubkey: string): Promise<TraderPortfolio> {
+  return fetchJson<TraderPortfolio>(`/api/v1/traders/${pubkey}/portfolio`);
+}
+
+export interface PeriodChange {
+  earnedLamports: number;
+  percent: number | null;
+}
+
+export interface PortfolioPerformance {
+  day: PeriodChange;
+  week: PeriodChange;
+  month: PeriodChange;
+  year: PeriodChange;
+}
+
+export function getTraderPortfolioPerformance(pubkey: string): Promise<PortfolioPerformance> {
+  return fetchJson<PortfolioPerformance>(`/api/v1/traders/${pubkey}/performance`);
+}
+
+export interface PortfolioHistoryPoint {
+  timestamp: string;
+  valueLamports: number;
+}
+
+export type PerformancePeriod = "day" | "week" | "month" | "year";
+
+export interface TraderTrade {
+  id: number;
+  signature: string;
+  marketPubkey: string | null;
+  direction: "BUY" | "SELL";
+  solAmount: string;
+  shareAmount: string;
+  price: string;
+  feePaid: string;
+  timestamp: string;
+  nftMint: string | null;
+  nftName: string | null;
+  nftImageUrl: string | null;
+}
+
+export function getTraderTrades(pubkey: string, limit = 50): Promise<TraderTrade[]> {
+  return fetchJson<TraderTrade[]>(`/api/v1/traders/${pubkey}/trades?limit=${limit}`);
+}
+
+export function getTraderPortfolioHistory(
+  pubkey: string,
+  options?: { points?: number; period?: PerformancePeriod }
+): Promise<PortfolioHistoryPoint[]> {
+  const params = new URLSearchParams();
+  if (options?.points) params.set("points", String(options.points));
+  if (options?.period) params.set("period", options.period);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return fetchJson<PortfolioHistoryPoint[]>(`/api/v1/traders/${pubkey}/portfolio/history${query}`);
 }
 
 export interface WaitlistJoinPayload {

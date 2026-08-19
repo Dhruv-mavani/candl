@@ -1,7 +1,7 @@
-import { desc, gte, sql } from "drizzle-orm";
+import { desc, eq, gte, sql } from "drizzle-orm";
 import type { getDb } from "../../db/index.js";
-import { markets, trades } from "../../db/schema.js";
-import { getProtocolEarnings } from "./earnings.js";
+import { markets, nftMetadata, trades } from "../../db/schema.js";
+import { getProtocolEarnings, creatorShareOfFee } from "./earnings.js";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -62,4 +62,106 @@ export async function getTrendingMarkets(db: Db, limit = 10): Promise<TrendingMa
   return rows
     .filter((row): row is typeof row & { marketPubkey: string } => row.marketPubkey !== null)
     .map((row) => ({ marketPubkey: row.marketPubkey, volume24h: Number(row.volume24h) }));
+}
+
+export interface ProtocolHistoryPoint {
+  timestamp: string;
+  cumulativeVolumeLamports: number;
+  cumulativeProtocolEarningsLamports: number;
+}
+
+/**
+ * Protocol-wide cumulative volume and protocol-fee earnings over time, built
+ * by replaying every trade across every market in order (each trade's
+ * protocol cut split out via its own market's fee_protocol_bps/fee_creator_bps,
+ * same as getProtocolEarnings) and sampling the running totals at evenly
+ * spaced points -- real data throughout, nothing synthesized.
+ */
+export async function getProtocolEarningsHistory(db: Db, points = 30): Promise<ProtocolHistoryPoint[]> {
+  const rows = await db
+    .select({
+      timestamp: trades.timestamp,
+      solAmount: trades.solAmount,
+      feePaid: trades.feePaid,
+      feeProtocolBps: markets.feeProtocolBps,
+      feeCreatorBps: markets.feeCreatorBps,
+    })
+    .from(trades)
+    .innerJoin(markets, eq(trades.marketPubkey, markets.pubkey))
+    .orderBy(trades.timestamp);
+
+  if (rows.length === 0) return [];
+
+  const start = rows[0]!.timestamp.getTime();
+  const end = Date.now();
+  const stepMs = points > 1 ? Math.max(1, (end - start) / (points - 1)) : 0;
+
+  const series: ProtocolHistoryPoint[] = [];
+  let idx = 0;
+  let cumulativeVolume = 0;
+  let cumulativeProtocolEarnings = 0;
+
+  for (let i = 0; i < points; i++) {
+    const t = start + i * stepMs;
+    while (idx < rows.length && rows[idx]!.timestamp.getTime() <= t) {
+      const row = rows[idx]!;
+      const feePaid = Number(row.feePaid);
+      const creatorShare = creatorShareOfFee(feePaid, row.feeProtocolBps, row.feeCreatorBps);
+      cumulativeVolume += Number(row.solAmount);
+      cumulativeProtocolEarnings += feePaid - creatorShare;
+      idx++;
+    }
+    series.push({
+      timestamp: new Date(t).toISOString(),
+      cumulativeVolumeLamports: cumulativeVolume,
+      cumulativeProtocolEarningsLamports: cumulativeProtocolEarnings,
+    });
+  }
+
+  return series;
+}
+
+export interface ProtocolMarketEarnings {
+  marketPubkey: string;
+  nftMint: string;
+  nftName: string | null;
+  nftImageUrl: string | null;
+  protocolEarnedLamports: number;
+  volumeLamports: number;
+}
+
+/** Markets ranked by how much protocol fee revenue they've generated. */
+export async function getProtocolEarningsByMarket(db: Db, limit = 8): Promise<ProtocolMarketEarnings[]> {
+  const rows = await db
+    .select({
+      marketPubkey: markets.pubkey,
+      nftMint: markets.nftMint,
+      nftName: nftMetadata.name,
+      nftImageUrl: nftMetadata.imageUrl,
+      feeProtocolBps: markets.feeProtocolBps,
+      feeCreatorBps: markets.feeCreatorBps,
+      totalFeePaid: sql<string>`COALESCE(SUM(${trades.feePaid}), 0)`,
+      totalVolume: sql<string>`COALESCE(SUM(${trades.solAmount}), 0)`,
+    })
+    .from(markets)
+    .leftJoin(trades, eq(trades.marketPubkey, markets.pubkey))
+    .leftJoin(nftMetadata, eq(nftMetadata.mint, markets.nftMint))
+    .groupBy(markets.pubkey, markets.nftMint, nftMetadata.name, nftMetadata.imageUrl, markets.feeProtocolBps, markets.feeCreatorBps);
+
+  return rows
+    .map((row) => {
+      const totalFee = Number(row.totalFeePaid);
+      const creatorShare = creatorShareOfFee(totalFee, row.feeProtocolBps, row.feeCreatorBps);
+      return {
+        marketPubkey: row.marketPubkey,
+        nftMint: row.nftMint,
+        nftName: row.nftName,
+        nftImageUrl: row.nftImageUrl,
+        protocolEarnedLamports: totalFee - creatorShare,
+        volumeLamports: Number(row.totalVolume),
+      };
+    })
+    .filter((m) => m.protocolEarnedLamports > 0)
+    .sort((a, b) => b.protocolEarnedLamports - a.protocolEarnedLamports)
+    .slice(0, limit);
 }

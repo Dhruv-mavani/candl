@@ -20,6 +20,7 @@ import { AnchorProvider, Program, Wallet, BN } from "@anchor-lang/core";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const DURATION_MINUTES = Number(process.argv[2] ?? 10);
 const BOTS_PER_MARKET = Number(process.argv[3] ?? 4);
+const SPEED_MULTIPLIER = Number(process.argv[4] ?? 1);
 const FUND_LAMPORTS = 60_000_000; // 0.06 SOL/bot -- enough headroom for several buys/sells over the run
 const MIN_DELAY_MS = 2000;
 const MAX_DELAY_MS = 9000;
@@ -29,7 +30,7 @@ function randomShareAmount(max = 5) {
 }
 
 function randomDelay() {
-  return MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS));
+  return (MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS))) / SPEED_MULTIPLIER;
 }
 
 function sleep(ms: number) {
