@@ -4,7 +4,7 @@ Layer 1 of the Candl stack (see `../docs/06-smart-contracts.md`, `../docs/14-roa
 
 ## What's here
 
-All 7 instructions from `docs/06-smart-contracts.md` are implemented for real: `initialize_protocol`, `create_market`, `buy`, `sell`, `extend_market`, `settle`, `redeem`. The bonding curve is the cubic reserve function from `docs/03-economics.md` (`Reserve(S) = curve_alpha*S^3 + curve_beta*S`, computed in `u128` to avoid overflow -- see `src/state/bonding_curve.rs`), not the constant-product model that used to be documented elsewhere (see `../docs/15-decisions.md` ADR #4 for why that changed).
+All 7 instructions from `docs/06-smart-contracts.md` are implemented for real: `initialize_protocol`, `create_market`, `buy`, `sell`, `extend_market`, `settle`, `force_redeem`. The bonding curve is the cubic reserve function from `docs/03-economics.md` (`Reserve(S) = curve_alpha*S^3 + curve_beta*S`, computed in `u128` to avoid overflow -- see `src/state/bonding_curve.rs`), not the constant-product model that used to be documented elsewhere (see `../docs/15-decisions.md` ADR #4 for why that changed).
 
 **Deployed to devnet** at `JDqvbHqaL1W57YALJnY1Lyyi6Ai5aFMaNi1mzYATTYAa`, with `ProtocolConfig` initialized at `34ifcRyTexoFhANuo3zZvKz3FRrb5kwMDcf9WnDGzEAN`. **Not audited yet.**
 
@@ -29,7 +29,7 @@ src/
 Two layers, both real:
 
 - **Pure math unit tests** (`src/state/bonding_curve.rs`, `#[cfg(test)] mod tests`) -- fast, no VM, run with `cargo test --lib`.
-- **LiteSVM integration tests** (`tests/test_market_lifecycle.rs`) -- boots a real Solana VM, deploys the actual compiled `.so`, creates a real SPL mint to stand in for the NFT, and walks the full lifecycle: create market → buy → sell → settle → redeem → NFT returned to creator. Also covers slippage rejection and creator-only access control on `extend_market`.
+- **LiteSVM integration tests** (`tests/test_market_lifecycle.rs`) -- boots a real Solana VM, deploys the actual compiled `.so`, creates a real SPL mint to stand in for the NFT, and walks the full lifecycle: create market → buy → sell → settle → force_redeem → NFT returned to creator. Also covers slippage rejection and creator-only access control on `extend_market`.
 
 ```bash
 anchor build          # compiles the program AND the IDL (target/deploy/candl.so, target/idl/candl.json)

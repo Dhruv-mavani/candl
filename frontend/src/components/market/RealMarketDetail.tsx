@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import useSWR from "swr";
 import {
@@ -7,7 +8,6 @@ import {
   TrendingUp,
   DollarSign,
   BarChart3,
-  Droplets,
   AlertTriangle,
   Loader2,
   CheckCircle2,
@@ -18,13 +18,20 @@ import {
   SlidersHorizontal,
   Minus,
   Eraser,
+  Search,
+  Maximize2,
+  Minimize2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineSeries, LineStyle, CrosshairMode, PriceScaleMode } from "lightweight-charts";
 import type { IChartApi, ISeriesApi, SeriesType, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
 
-import { getMarket, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
+import { getMarket, getMarkets, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
 import { formatCountdown } from "@/lib/format";
 import { useSolPriceUsd } from "@/lib/solPrice";
 import { sma, ema, bollingerBands, rsi, macd, vwap } from "@/lib/indicators";
@@ -38,8 +45,8 @@ import {
   buy,
   sell,
   settleMarket,
-  quoteRedeem,
-  redeem,
+  redeemAll,
+  getRemainingPositions,
   type TradeQuote,
 } from "@/lib/candl-program";
 import { getErrorMessage, isWalletRejection } from "@/lib/wallet-errors";
@@ -48,6 +55,10 @@ const glass =
   "bg-white/50 dark:bg-white/[0.05] backdrop-blur-xl border border-white/70 dark:border-white/10 shadow-[0_8px_32px_rgba(16,185,129,0.07)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.3)]";
 const inset =
   "bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/[0.07] rounded-xl";
+// Trading-terminal panel treatment for this page's redesign: solid + bordered
+// (dark mode goes near-black) instead of the translucent glass used elsewhere.
+const panel = "bg-white dark:bg-[#0a0e14] border border-slate-200 dark:border-white/[0.07] rounded-2xl";
+const panelRow = "border-b border-slate-100 dark:border-white/[0.05]";
 
 const RESOLUTIONS: { key: CandleResolution; label: string }[] = [
   { key: "1m", label: "1m" },
@@ -76,6 +87,8 @@ function NotFound() {
 
 export function RealMarketDetail({ mint }: { mint: string }) {
   const [resolution, setResolution] = useState<CandleResolution>("1m");
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [showFullscreenTrade, setShowFullscreenTrade] = useState(true);
   const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
   const [amountMode, setAmountMode] = useState<"Shares" | "SOL">("Shares");
   const [shareInput, setShareInput] = useState("");
@@ -231,32 +244,20 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     }
   };
 
-  const [redeemInput, setRedeemInput] = useState("");
-  const redeemAmount = parseInt(redeemInput, 10) || 0;
-  const [redeemQuote, setRedeemQuote] = useState<{ solReceived: string } | null>(null);
-  const [redeemQuoting, setRedeemQuoting] = useState(false);
+  const { data: remainingPositions, mutate: refreshRemainingPositions } = useSWR(
+    program && market?.state === "SETTLING" ? `remainingPositions:${mint}` : null,
+    async () => {
+      if (!program) return [];
+      return await getRemainingPositions({ program, nftMint });
+    },
+    { refreshInterval: 10_000 }
+  );
+  const otherHoldersCount = (remainingPositions ?? []).filter((p) => !publicKey || !p.trader.equals(publicKey)).length;
+
   const [redeeming, setRedeeming] = useState(false);
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [redeemSignature, setRedeemSignature] = useState<string | null>(null);
-
-  useEffect(() => {
-    const timeout = setTimeout(async () => {
-      if (!program || !publicKey || !creator || redeemAmount <= 0) {
-        setRedeemQuote(null);
-        return;
-      }
-      setRedeemQuoting(true);
-      try {
-        const q = await quoteRedeem({ program, trader: publicKey, nftMint, creator, shareAmount: redeemAmount });
-        setRedeemQuote(q);
-      } catch {
-        setRedeemQuote(null);
-      } finally {
-        setRedeemQuoting(false);
-      }
-    }, 400);
-    return () => clearTimeout(timeout);
-  }, [program, publicKey, creator, redeemAmount, nftMint]);
+  const [redeemedCount, setRedeemedCount] = useState(0);
 
   const handleRedeem = async () => {
     setRedeemError(null);
@@ -265,17 +266,16 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       setRedeemError("Connect your wallet first.");
       return;
     }
-    if (redeemAmount <= 0) return;
 
     setRedeeming(true);
     try {
-      const { signature } = await redeem({ program, trader: publicKey, nftMint, creator, shareAmount: redeemAmount });
+      const { signature, redeemedCount } = await redeemAll({ program, caller: publicKey, nftMint, creator });
       setRedeemSignature(signature);
-      setRedeemInput("");
-      setRedeemQuote(null);
+      setRedeemedCount(redeemedCount);
       refreshMarket();
       refreshPosition();
       refreshOnChainCurve();
+      refreshRemainingPositions();
     } catch (err) {
       if (!isWalletRejection(err)) console.error("redeem failed:", err);
       setRedeemError(getErrorMessage(err, "Failed to redeem shares."));
@@ -290,6 +290,70 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLineRef = useRef<IPriceLine | null>(null);
   const [priceScaleMode, setPriceScaleMode] = useState<"normal" | "log" | "percentage">("normal");
+  // Persisted so a page refresh while fullscreen doesn't silently drop back
+  // to the normal layout -- sessionStorage rather than state alone since the
+  // whole point is surviving a reload within this tab.
+  const [isChartFullscreen, setIsChartFullscreen] = useState(
+    () => typeof window !== "undefined" && sessionStorage.getItem("candl-chart-fullscreen") === "true"
+  );
+  useEffect(() => {
+    sessionStorage.setItem("candl-chart-fullscreen", String(isChartFullscreen));
+  }, [isChartFullscreen]);
+
+  // Market switcher -- search/jump to any other live market from the chart header.
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherQuery, setSwitcherQuery] = useState("");
+  const { data: allMarkets } = useSWR("/api/v1/markets", getMarkets, { refreshInterval: 30_000 });
+  const otherMarkets = useMemo(() => {
+    if (!allMarkets) return [];
+    const q = switcherQuery.trim().toLowerCase();
+    return allMarkets
+      .filter((m) => m.nftMint !== mint)
+      .filter((m) => !q || (m.metadata?.name ?? m.nftMint).toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [allMarkets, switcherQuery, mint]);
+
+  useEffect(() => {
+    if (!isChartFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsChartFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isChartFullscreen]);
+
+  // Hide the app navbar and lock page scroll while the chart is fullscreen --
+  // the navbar isn't part of this component's tree so this reaches it
+  // directly via the DOM rather than plumbing shared state through AppLayout.
+  useEffect(() => {
+    if (!isChartFullscreen) return;
+    const header = document.querySelector("header");
+    const prevHeaderDisplay = header?.style.display;
+    const prevBodyOverflow = document.body.style.overflow;
+    if (header) header.style.display = "none";
+    document.body.style.overflow = "hidden";
+    return () => {
+      if (header) header.style.display = prevHeaderDisplay ?? "";
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, [isChartFullscreen]);
+
+  // Toggling the fullscreen trade panel or the left NFT/market-info sidebar
+  // both change the chart's available width via CSS (flex in fullscreen,
+  // grid-template-columns in the normal layout), not a window resize --
+  // lightweight-charts only remeasures on an actual "resize" event (see the
+  // handleResize listener in the chart-creation effect) or an explicit
+  // applyOptions call, so without this the canvas is left sized for
+  // whichever layout it was created under: dead space or clipping in
+  // fullscreen, or the price-scale labels overlapping the trade panel in the
+  // normal layout, depending on which way the width changed.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      if (!chartRef.current || !chartContainerRef.current) return;
+      chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isChartFullscreen, showFullscreenTrade, showSidebar]);
 
   // Indicators -- all computed client-side from the real candles already
   // loaded (lightweight-charts ships none of this; see lib/indicators.ts).
@@ -363,6 +427,12 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     // container entirely, so on first mount (while still loading) the ref
     // is null and chart creation would silently no-op forever -- rerun once
     // loading finishes and the container actually exists in the DOM.
+    // isChartFullscreen is also a dependency: the fullscreen chart card is
+    // rendered through a portal (see chartCard usage below) rather than
+    // just repositioned with CSS, which means React tears down and recreates
+    // the underlying container div on every fullscreen toggle. Without this
+    // dependency the effect wouldn't rerun, so chartRef would still point at
+    // the old (now-detached) chart instance instead of the fresh container.
     if (!chartContainerRef.current || chartRef.current) return;
     const isDark = document.documentElement.classList.contains("dark");
 
@@ -485,7 +555,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       oscillatorSeriesRef.current = [];
       horizontalLinesRef.current = [];
     };
-  }, [marketLoading]);
+  }, [marketLoading, isChartFullscreen]);
 
   useEffect(() => {
     if (!seriesRef.current || !volumeSeriesRef.current || processedCandles.length === 0) return;
@@ -529,7 +599,11 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     } else {
       chartRef.current?.timeScale().fitContent();
     }
-  }, [processedCandles]);
+    // isChartFullscreen: the chart/series get recreated on every fullscreen
+    // toggle (see the chart-creation effect above), so this needs to rerun
+    // and repopulate the fresh series even though processedCandles itself
+    // hasn't changed value.
+  }, [processedCandles, isChartFullscreen]);
 
   // Redraws every active indicator from the real candles already loaded.
   // Oscillator panes (RSI/MACD) are torn down and rebuilt in a fixed order
@@ -599,7 +673,10 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       signalLine.setData(times.map((time, i) => ({ time, value: values[i].signal })).filter((d): d is { time: UTCTimestamp; value: number } => d.value !== null));
       oscillatorSeriesRef.current.push(histSeries, macdLine, signalLine);
     }
-  }, [processedCandles, indicators]);
+    // isChartFullscreen: same reasoning as the setData effect above -- the
+    // chart itself is recreated on fullscreen toggle, so any active
+    // indicators need to be redrawn onto the fresh instance.
+  }, [processedCandles, indicators, isChartFullscreen]);
 
   if (marketLoading) {
     return (
@@ -622,322 +699,321 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const canTrade = isActive && !isExpired;
   const insufficientShares = tradeType === "sell" && shareAmount > (ownedShares ?? 0);
 
-  return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
-      <Link href="/marketplace">
-        <button type="button" className="flex items-center gap-1.5 mb-6 text-sm text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Marketplace
-        </button>
-      </Link>
+  const currentMarketName = market.metadata?.name ?? "Market";
 
-      <div className="grid lg:grid-cols-3 gap-5">
-        {/* ── Left: NFT info ── */}
-        <div className="lg:col-span-1 space-y-5">
-          <div className={`rounded-2xl overflow-hidden ${glass}`}>
-            <div className="relative aspect-square bg-slate-100 dark:bg-slate-900">
-              {market.metadata?.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={market.metadata.imageUrl} alt={market.metadata.name ?? "NFT"} className="w-full h-full object-cover" />
-              ) : null}
-            </div>
+  // Extracted so the exact same chart-card element can be rendered either
+  // inline (normal layout) or through a portal (fullscreen) without
+  // duplicating this markup -- see the fullscreen wrapper below for why a
+  // portal is required rather than just a "position: fixed" class.
+  const chartCard = (
+    <div className={`${panel} p-5`}>
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div className="flex items-center gap-2 relative">
+          {/* This toggles the left NFT/market-info column, which is a
+              separate part of the page grid entirely -- it isn't rendered
+              at all while fullscreen (the portal only carries the chart and
+              optionally the trade panel), so showing this button there would
+              be a dead control with no visible effect. */}
+          {!isChartFullscreen && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowSidebar((s) => !s)}
+                className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-slate-500 dark:text-slate-400"
+                title={showSidebar ? "Hide NFT info" : "Show NFT info"}
+              >
+                {showSidebar ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+              </button>
+              <span className="w-px h-4 bg-slate-200 dark:bg-white/10 hidden sm:block mx-1" />
+            </>
+          )}
 
-            <div className="p-5 space-y-4">
-              <div>
-                <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">Live on devnet</div>
-                <h1 className="text-xl font-bold">{market.metadata?.name ?? "Unnamed Market"}</h1>
-              </div>
+          <BarChart3 className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />
 
-              {market.state === "ACTIVE" && now !== null && (
-                <div
-                  className={`flex items-center gap-2 p-3 ${inset} ${
-                    isExpired ? "border-amber-400/40" : ""
-                  }`}
-                >
-                  <Clock className={`w-4 h-4 shrink-0 ${isExpired ? "text-amber-500" : "text-emerald-500 dark:text-emerald-400"}`} />
-                  <div>
-                    <div className="text-xs text-slate-400 dark:text-slate-500">
-                      {isExpired ? "Market closed" : "Closes in"}
-                    </div>
-                    <div className={`font-semibold text-sm tabular-nums ${isExpired ? "text-amber-600 dark:text-amber-400" : ""}`}>
-                      {isExpired ? "Awaiting settlement" : formatCountdown(market.expiresAt, now)}
-                    </div>
+          {/* Market switcher -- search/jump to any other live market */}
+          <button type="button"
+            onClick={() => setSwitcherOpen((open) => !open)}
+            className="flex items-center gap-1 px-1.5 py-1 -ml-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+          >
+            <span className="font-semibold text-sm">{currentMarketName}/SOL</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+          </button>
+          <span className="text-xs text-slate-400 dark:text-slate-500">· {resolution.toUpperCase()} · Candl</span>
+
+          {switcherOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setSwitcherOpen(false)} />
+              <div className={`absolute left-0 top-full mt-2 w-72 rounded-xl z-20 overflow-hidden ${panel}`}>
+                <div className="p-2 border-b border-slate-100 dark:border-white/[0.06]">
+                  <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-white/5">
+                    <Search className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
+                    <input
+                      autoFocus
+                      value={switcherQuery}
+                      onChange={(e) => setSwitcherQuery(e.target.value)}
+                      placeholder="Search markets..."
+                      className="w-full bg-transparent text-sm outline-none placeholder:text-slate-400 dark:placeholder:text-slate-600"
+                    />
                   </div>
                 </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: "Market Cap", sol: stats ? lamportsToSol(stats.marketCap) : 0, color: "text-sky-600 dark:text-sky-400" },
-                  { label: "24h Volume", sol: stats ? lamportsToSol(stats.volume24h) : 0, color: "text-amber-500 dark:text-amber-400" },
-                ].map(({ label, sol, color }) => (
-                  <div key={label} className={`p-3 ${inset}`}>
-                    <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{label}</div>
-                    <div className={`font-semibold text-sm ${color}`}>
-                      {solPriceUsd !== undefined
-                        ? `$${(sol * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : `${sol.toFixed(4)} SOL`}
-                    </div>
-                    {solPriceUsd !== undefined && <div className="text-[11px] text-slate-400 dark:text-slate-500">{sol.toFixed(4)} SOL</div>}
-                  </div>
-                ))}
-                {[
-                  { label: "Outstanding Shares", value: outstandingSharesStr ?? "0" },
-                  { label: "Holders", value: (stats?.holderCount ?? 0).toString() },
-                ].map(({ label, value }) => (
-                  <div key={label} className={`p-3 ${inset}`}>
-                    <div className="text-xs text-slate-400 dark:text-slate-500 mb-0.5">{label}</div>
-                    <div className="font-semibold text-sm">{value}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div className={`p-4 ${inset}`}>
-                <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 mb-2">
-                  <Droplets className="w-3.5 h-3.5" />
-                  Reserve Liquidity
-                </div>
-                <div className="flex items-baseline gap-1.5 mb-2 flex-wrap">
-                  {solPriceUsd !== undefined ? (
-                    <>
-                      <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                        ${(reserveSOL * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">{reserveSOL.toFixed(4)} SOL</span>
-                    </>
+                <div className="max-h-72 overflow-y-auto">
+                  {otherMarkets.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400 dark:text-slate-500">No other markets found.</div>
                   ) : (
-                    <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{reserveSOL.toFixed(4)} SOL</span>
+                    otherMarkets.map((m) => (
+                      <Link key={m.nftMint} href={`/market/${m.nftMint}`} onClick={() => setSwitcherOpen(false)}>
+                        <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors">
+                          <div className="w-8 h-8 rounded-md overflow-hidden bg-slate-100 dark:bg-white/5 shrink-0">
+                            {m.metadata?.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={m.metadata.imageUrl} alt={m.metadata.name ?? "NFT"} className="w-full h-full object-cover" />
+                            ) : null}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold truncate">{m.metadata?.name ?? m.nftMint}</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 capitalize">{m.state.toLowerCase()}</div>
+                          </div>
+                          <div className="font-mono text-xs font-semibold shrink-0">{lamportsToSol(m.currentPrice).toFixed(6)}</div>
+                        </div>
+                      </Link>
+                    ))
                   )}
-                  <span className="text-xs text-slate-400 ml-1">locked in curve</span>
-                </div>
-                <div className="h-1.5 bg-slate-200/60 dark:bg-white/10 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500 w-full" />
                 </div>
               </div>
-
-              {!canTrade && (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-400/[0.07] border border-amber-200/60 dark:border-amber-400/15 text-xs text-amber-700 dark:text-amber-300">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  {market.state === "SETTLED"
-                    ? "This market has been fully settled."
-                    : market.state === "SETTLING"
-                      ? "Market is settling -- redeem your shares below."
-                      : "This market has expired -- awaiting settlement."}
-                </div>
-              )}
-            </div>
-          </div>
+            </>
+          )}
         </div>
 
-        {/* ── Right: Chart + Trading ── */}
-        <div className="lg:col-span-2 space-y-5">
-          <div className={`rounded-2xl p-5 ${glass}`}>
-            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
-                <span className="font-semibold text-sm">{market.metadata?.name ?? "Market"}/SOL</span>
-                <span className="text-xs text-slate-400 dark:text-slate-500">· {resolution.toUpperCase()} · Candl</span>
-              </div>
+        <div className="flex items-center gap-1">
+          {/* Drawing tools -- lightweight-charts has none built in, these are hand-built (see lib/trendLinePrimitive.ts) */}
+          <button type="button"
+            onClick={() => setDrawingMode(drawingMode === "trendline" ? "none" : "trendline")}
+            title="Trend line -- click two points on the chart"
+            className={`p-1.5 rounded-lg transition-all ${drawingMode === "trendline" ? "bg-blue-500/15 text-blue-500" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+          </button>
+          <button type="button"
+            onClick={() => setDrawingMode(drawingMode === "horizontal" ? "none" : "horizontal")}
+            title="Horizontal line -- click a price level on the chart"
+            className={`p-1.5 rounded-lg transition-all ${drawingMode === "horizontal" ? "bg-blue-500/15 text-blue-500" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+          >
+            <Minus className="w-3.5 h-3.5" />
+          </button>
+          <button type="button"
+            onClick={() => {
+              trendLinePrimitiveRef.current?.clear();
+              for (const line of horizontalLinesRef.current) seriesRef.current?.removePriceLine(line);
+              horizontalLinesRef.current = [];
+              setDrawingMode("none");
+            }}
+            title="Clear all drawings"
+            className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-all"
+          >
+            <Eraser className="w-3.5 h-3.5" />
+          </button>
 
-              <div className="flex items-center gap-1">
-                {/* Drawing tools -- lightweight-charts has none built in, these are hand-built (see lib/trendLinePrimitive.ts) */}
-                <button type="button"
-                  onClick={() => setDrawingMode(drawingMode === "trendline" ? "none" : "trendline")}
-                  title="Trend line -- click two points on the chart"
-                  className={`p-1.5 rounded-lg transition-all ${drawingMode === "trendline" ? "bg-blue-500/15 text-blue-500" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
-                >
-                  <TrendingUp className="w-3.5 h-3.5" />
-                </button>
-                <button type="button"
-                  onClick={() => setDrawingMode(drawingMode === "horizontal" ? "none" : "horizontal")}
-                  title="Horizontal line -- click a price level on the chart"
-                  className={`p-1.5 rounded-lg transition-all ${drawingMode === "horizontal" ? "bg-blue-500/15 text-blue-500" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-                <button type="button"
-                  onClick={() => {
-                    trendLinePrimitiveRef.current?.clear();
-                    for (const line of horizontalLinesRef.current) seriesRef.current?.removePriceLine(line);
-                    horizontalLinesRef.current = [];
-                    setDrawingMode("none");
-                  }}
-                  title="Clear all drawings"
-                  className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-all"
-                >
-                  <Eraser className="w-3.5 h-3.5" />
-                </button>
+          <span className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-1" />
 
-                <span className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-1" />
+          <div className="relative">
+            <button type="button"
+              onClick={() => setIndicatorsMenuOpen((open) => !open)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${indicatorsMenuOpen || Object.values(indicators).some(Boolean) ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Indicators
+            </button>
 
-                <div className="relative">
-                  <button type="button"
-                    onClick={() => setIndicatorsMenuOpen((open) => !open)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${indicatorsMenuOpen || Object.values(indicators).some(Boolean) ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
-                  >
-                    <SlidersHorizontal className="w-3.5 h-3.5" />
-                    Indicators
-                  </button>
-
-                  {indicatorsMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setIndicatorsMenuOpen(false)} />
-                      <div className={`absolute right-0 top-full mt-2 w-48 p-2 rounded-xl z-20 ${glass}`}>
-                        {(
-                          [
-                            ["sma", "SMA (20)"],
-                            ["ema", "EMA (20)"],
-                            ["bb", "Bollinger Bands"],
-                            ["vwap", "VWAP"],
-                            ["rsi", "RSI (14)"],
-                            ["macd", "MACD"],
-                          ] as const
-                        ).map(([key, label]) => (
-                          <label key={key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5">
-                            <input
-                              type="checkbox"
-                              checked={indicators[key]}
-                              onChange={() => setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))}
-                              className="accent-emerald-500"
-                            />
-                            {label}
-                          </label>
-                        ))}
-                      </div>
-                    </>
-                  )}
+            {indicatorsMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIndicatorsMenuOpen(false)} />
+                <div className={`absolute right-0 top-full mt-2 w-48 p-2 rounded-xl z-20 ${glass}`}>
+                  {(
+                    [
+                      ["sma", "SMA (20)"],
+                      ["ema", "EMA (20)"],
+                      ["bb", "Bollinger Bands"],
+                      ["vwap", "VWAP"],
+                      ["rsi", "RSI (14)"],
+                      ["macd", "MACD"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5">
+                      <input
+                        type="checkbox"
+                        checked={indicators[key]}
+                        onChange={() => setIndicators((prev) => ({ ...prev, [key]: !prev[key] }))}
+                        className="accent-emerald-500"
+                      />
+                      {label}
+                    </label>
+                  ))}
                 </div>
-              </div>
-            </div>
-
-            {drawingMode !== "none" && (
-              <p className="text-[11px] text-blue-500 mb-1">
-                {drawingMode === "trendline" ? "Click two points on the chart to draw a trend line." : "Click a point on the chart to place a horizontal line."}
-              </p>
+              </>
             )}
-
-            {/* OHLC data bar -- reflects the hovered candle, or the latest one */}
-            {displayCandle ? (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-1 text-xs font-mono">
-                <span className="text-slate-400 dark:text-slate-500">
-                  O <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.open.toFixed(6)}</span>
-                </span>
-                <span className="text-slate-400 dark:text-slate-500">
-                  H <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.high.toFixed(6)}</span>
-                </span>
-                <span className="text-slate-400 dark:text-slate-500">
-                  L <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.low.toFixed(6)}</span>
-                </span>
-                <span className="text-slate-400 dark:text-slate-500">
-                  C <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.close.toFixed(6)}</span>
-                </span>
-                <span className={`font-semibold ${displayCandle.change >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-                  {displayCandle.change >= 0 ? "+" : ""}{displayCandle.change.toFixed(6)} ({displayCandle.changePercent >= 0 ? "+" : ""}{displayCandle.changePercent.toFixed(2)}%)
-                </span>
-              </div>
-            ) : (
-              <div className="h-4 mb-1" />
-            )}
-
-            <div className="flex items-center gap-1.5 mb-2 text-xs text-slate-400 dark:text-slate-500 font-mono">
-              <Activity className="w-3 h-3" />
-              Volume <span className="text-slate-600 dark:text-slate-300">{displayCandle ? displayCandle.volume.toLocaleString() : "—"}</span>
-            </div>
-
-            <div className="flex items-baseline justify-between mb-3">
-              <div className="flex items-baseline gap-3">
-                <span className="text-3xl font-bold text-amber-500 dark:text-amber-400">{priceSOL.toFixed(6)} SOL</span>
-                {stats && stats.priceChange24h !== null && (
-                  <span className={`text-base font-semibold ${stats.priceChange24h >= 0 ? "text-emerald-500 dark:text-emerald-400" : "text-rose-500"}`}>
-                    {stats.priceChange24h >= 0 ? "+" : ""}{stats.priceChange24h.toFixed(2)}%
-                    <span className="text-xs text-slate-400 dark:text-slate-500 font-normal ml-1">24hr</span>
-                  </span>
-                )}
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-slate-400 dark:text-slate-500">ATH</div>
-                <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                  {stats ? `${lamportsToSol(stats.athPrice).toFixed(6)} SOL` : "—"}
-                </div>
-              </div>
-            </div>
-
-            <div className="relative">
-              <div ref={chartContainerRef} style={{ width: "100%", height: "420px", cursor: "crosshair" }} />
-
-              {(!candles || candles.length === 0) && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
-                  <BarChart3 className="w-8 h-8 text-slate-300 dark:text-slate-700" />
-                  <p className="text-sm text-slate-400 dark:text-slate-500">No trades yet on this market.</p>
-                  <p className="text-xs text-slate-300 dark:text-slate-600">Be the first to buy shares below.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Bottom toolbar: resolution + UTC clock + scale mode */}
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5 dark:border-white/5">
-              <div className="flex items-center gap-1 text-xs font-mono">
-                {RESOLUTIONS.map(({ key, label }) => (
-                  <button type="button"
-                    key={key}
-                    onClick={() => setResolution(key)}
-                    className={`px-2 py-0.5 rounded transition-all ${resolution === key ? "text-emerald-500 font-semibold" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 text-xs font-mono text-slate-400 dark:text-slate-500">
-                <span>{now !== null ? new Date(now).toLocaleTimeString("en-US", { hour12: false, timeZone: "UTC" }) : "--:--:--"} UTC</span>
-                <span className="text-slate-300 dark:text-slate-600">|</span>
-                <button type="button"
-                  onClick={() => {
-                    setPriceScaleMode("percentage");
-                    chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Percentage });
-                  }}
-                  className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "percentage" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
-                >
-                  %
-                </button>
-                <button type="button"
-                  onClick={() => {
-                    setPriceScaleMode("log");
-                    chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Logarithmic });
-                  }}
-                  className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "log" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
-                >
-                  log
-                </button>
-                <button type="button"
-                  onClick={() => {
-                    setPriceScaleMode("normal");
-                    chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Normal, autoScale: true });
-                    chartRef.current?.timeScale().fitContent();
-                  }}
-                  className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "normal" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
-                >
-                  auto
-                </button>
-              </div>
-            </div>
-
-            {/* Footer stats -- computed from the real candles currently loaded */}
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-black/5 dark:border-white/5">
-              <div className="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
-                <span>Avg Vol: <span className="text-slate-600 dark:text-slate-300 font-medium">{chartStats.avgVolume.toLocaleString()}</span></span>
-                <span>Total Vol: <span className="text-slate-600 dark:text-slate-300 font-medium">{chartStats.totalVolume.toLocaleString()}</span></span>
-                <span>Candles: <span className="text-slate-600 dark:text-slate-300 font-medium">{processedCandles.length}</span></span>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500" />Up</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500" />Down</span>
-              </div>
-            </div>
           </div>
 
-          {/* Trading / Settle / Redeem Panel */}
-          <div className={`rounded-2xl p-5 ${glass}`}>
+          <span className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-1" />
+
+          <button type="button"
+            onClick={() => setIsChartFullscreen((f) => !f)}
+            title={isChartFullscreen ? "Exit fullscreen" : "Fullscreen chart"}
+            className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-all"
+          >
+            {isChartFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
+          {isChartFullscreen && (
+            <button type="button"
+              onClick={() => setShowFullscreenTrade((t) => !t)}
+              title={showFullscreenTrade ? "Hide trading panel" : "Show trading panel"}
+              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-all ml-1"
+            >
+              {showFullscreenTrade ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRightOpen className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {drawingMode !== "none" && (
+        <p className="text-[11px] text-blue-500 mb-1">
+          {drawingMode === "trendline" ? "Click two points on the chart to draw a trend line." : "Click a point on the chart to place a horizontal line."}
+        </p>
+      )}
+
+      {/* OHLC data bar -- reflects the hovered candle, or the latest one */}
+      {displayCandle ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-1 text-xs font-mono">
+          <span className="text-slate-400 dark:text-slate-500">
+            O <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.open.toFixed(6)}</span>
+          </span>
+          <span className="text-slate-400 dark:text-slate-500">
+            H <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.high.toFixed(6)}</span>
+          </span>
+          <span className="text-slate-400 dark:text-slate-500">
+            L <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.low.toFixed(6)}</span>
+          </span>
+          <span className="text-slate-400 dark:text-slate-500">
+            C <span className={displayCandle.close >= displayCandle.open ? "text-emerald-500" : "text-rose-500"}>{displayCandle.close.toFixed(6)}</span>
+          </span>
+          <span className={`font-semibold ${displayCandle.change >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+            {displayCandle.change >= 0 ? "+" : ""}{displayCandle.change.toFixed(6)} ({displayCandle.changePercent >= 0 ? "+" : ""}{displayCandle.changePercent.toFixed(2)}%)
+          </span>
+        </div>
+      ) : (
+        <div className="h-4 mb-1" />
+      )}
+
+      <div className="flex items-center gap-1.5 mb-2 text-xs text-slate-400 dark:text-slate-500 font-mono">
+        <Activity className="w-3 h-3" />
+        Volume <span className="text-slate-600 dark:text-slate-300">{displayCandle ? displayCandle.volume.toLocaleString() : "—"}</span>
+      </div>
+
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="flex items-baseline gap-3">
+          <span className="text-3xl font-bold text-amber-500 dark:text-amber-400">{priceSOL.toFixed(6)} SOL</span>
+          {stats && stats.priceChange24h !== null && (
+            <span className={`text-base font-semibold ${stats.priceChange24h >= 0 ? "text-emerald-500 dark:text-emerald-400" : "text-rose-500"}`}>
+              {stats.priceChange24h >= 0 ? "+" : ""}{stats.priceChange24h.toFixed(2)}%
+              <span className="text-xs text-slate-400 dark:text-slate-500 font-normal ml-1">24hr</span>
+            </span>
+          )}
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-slate-400 dark:text-slate-500">ATH</div>
+          {stats ? (
+            solPriceUsd !== undefined ? (
+              <>
+                <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                  ${(lamportsToSol(stats.athPrice) * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500">{lamportsToSol(stats.athPrice).toFixed(6)} SOL</div>
+              </>
+            ) : (
+              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{lamportsToSol(stats.athPrice).toFixed(6)} SOL</div>
+            )
+          ) : (
+            <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">—</div>
+          )}
+        </div>
+      </div>
+
+      <div className="relative">
+        <div ref={chartContainerRef} style={{ width: "100%", height: isChartFullscreen ? "calc(100vh - 320px)" : "420px", cursor: "crosshair" }} />
+
+        {(!candles || candles.length === 0) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+            <BarChart3 className="w-8 h-8 text-slate-300 dark:text-slate-700" />
+            <p className="text-sm text-slate-400 dark:text-slate-500">No trades yet on this market.</p>
+            <p className="text-xs text-slate-300 dark:text-slate-600">Be the first to buy shares below.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom toolbar: resolution + UTC clock + scale mode */}
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5 dark:border-white/5">
+        <div className="flex items-center gap-1 text-xs font-mono">
+          {RESOLUTIONS.map(({ key, label }) => (
+            <button type="button"
+              key={key}
+              onClick={() => setResolution(key)}
+              className={`px-2 py-0.5 rounded transition-all ${resolution === key ? "text-emerald-500 font-semibold" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs font-mono text-slate-400 dark:text-slate-500">
+          <span>{now !== null ? new Date(now).toLocaleTimeString("en-US", { hour12: false, timeZone: "UTC" }) : "--:--:--"} UTC</span>
+          <span className="text-slate-300 dark:text-slate-600">|</span>
+          <button type="button"
+            onClick={() => {
+              setPriceScaleMode("percentage");
+              chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Percentage });
+            }}
+            className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "percentage" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
+          >
+            %
+          </button>
+          <button type="button"
+            onClick={() => {
+              setPriceScaleMode("log");
+              chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Logarithmic });
+            }}
+            className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "log" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
+          >
+            log
+          </button>
+          <button type="button"
+            onClick={() => {
+              setPriceScaleMode("normal");
+              chartRef.current?.priceScale("right").applyOptions({ mode: PriceScaleMode.Normal, autoScale: true });
+              chartRef.current?.timeScale().fitContent();
+            }}
+            className={`px-1.5 py-0.5 rounded transition-all ${priceScaleMode === "normal" ? "text-emerald-500 font-semibold" : "hover:text-slate-600 dark:hover:text-slate-300"}`}
+          >
+            auto
+          </button>
+        </div>
+      </div>
+
+      {/* Footer stats -- computed from the real candles currently loaded */}
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-black/5 dark:border-white/5">
+        <div className="flex items-center gap-4 text-xs text-slate-400 dark:text-slate-500">
+          <span>Avg Vol: <span className="text-slate-600 dark:text-slate-300 font-medium">{chartStats.avgVolume.toLocaleString()}</span></span>
+          <span>Total Vol: <span className="text-slate-600 dark:text-slate-300 font-medium">{chartStats.totalVolume.toLocaleString()}</span></span>
+          <span>Candles: <span className="text-slate-600 dark:text-slate-300 font-medium">{processedCandles.length}</span></span>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-500" />Up</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-500" />Down</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderTradeCard = () => (
+        <div className={`${panel} p-5 flex flex-col ${isChartFullscreen ? "h-full overflow-y-auto" : ""}`}>
             {market.state === "ACTIVE" && !isExpired && (
               <>
                 <div className="flex items-center gap-2 mb-5">
@@ -1107,8 +1183,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
 
                   <div className="bg-sky-50/80 dark:bg-sky-400/[0.07] border border-sky-200/60 dark:border-sky-400/15 rounded-xl p-3">
                     <p className="text-xs text-sky-700 dark:text-sky-300">
-                      <TrendingUp className="inline w-3 h-3 mr-1" />
-                      Fees are {(market.feeProtocolBps + market.feeCreatorBps) / 100}% per trade ({market.feeProtocolBps / 100}% protocol / {market.feeCreatorBps / 100}% creator).
+                      Fees are {(market.feeProtocolBps + market.feeCreatorBps) / 100}% per trade.
                     </p>
                   </div>
                 </div>
@@ -1161,70 +1236,43 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                   ) : null}
                 </div>
 
-                {!ownedShares && (
+                <div className="space-y-4">
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    You don&apos;t hold any shares in this market to redeem.
+                    {otherHoldersCount > 0
+                      ? `${otherHoldersCount} other holder${otherHoldersCount === 1 ? "" : "s"} still ${otherHoldersCount === 1 ? "has" : "have"} shares outstanding.`
+                      : ownedShares
+                        ? "You're the only remaining holder."
+                        : "You don't hold any shares in this market."}
                   </p>
-                )}
 
-                {!!ownedShares && (
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="redeem-shares" className="text-xs text-slate-400 dark:text-slate-500 block mb-1.5">
-                        Shares to redeem
-                      </label>
-                      <input
-                        id="redeem-shares"
-                        type="number"
-                        min={0}
-                        step={1}
-                        placeholder="0"
-                        value={redeemInput}
-                        onChange={(e) => setRedeemInput(e.target.value)}
-                        onWheel={(e) => e.currentTarget.blur()}
-                        className={`w-full h-12 px-4 rounded-xl text-lg outline-none ${inset} placeholder:text-slate-300 dark:placeholder:text-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                      />
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    Clicking Redeem pays out every remaining holder&apos;s share of the reserve, not just yours — they receive their SOL, you only cover the network fee.
+                  </p>
+
+                  {redeemError && <p className="text-sm text-destructive">{redeemError}</p>}
+                  {redeemSignature && (
+                    <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <a
+                        href={`https://explorer.solana.com/tx/${redeemSignature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        Redeemed {redeemedCount} holder{redeemedCount === 1 ? "" : "s"} -- view on Solana Explorer
+                      </a>
                     </div>
+                  )}
 
-                    <div className={`p-4 space-y-2 ${inset}`}>
-                      <div className="flex justify-between items-center">
-                        <span className="font-semibold text-sm">
-                          You Receive {redeemQuoting && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}
-                        </span>
-                        <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                          {redeemQuote ? lamportsToSol(redeemQuote.solReceived).toFixed(6) : "0"} SOL
-                        </span>
-                      </div>
-                    </div>
-
-                    {redeemAmount > (ownedShares ?? 0) && (
-                      <p className="text-sm text-destructive">You only own {ownedShares} shares.</p>
-                    )}
-                    {redeemError && <p className="text-sm text-destructive">{redeemError}</p>}
-                    {redeemSignature && (
-                      <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <a
-                          href={`https://explorer.solana.com/tx/${redeemSignature}?cluster=devnet`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:underline"
-                        >
-                          Redeemed -- view on Solana Explorer
-                        </a>
-                      </div>
-                    )}
-
-                    <button type="button"
-                      onClick={handleRedeem}
-                      disabled={!program || redeeming || redeemAmount <= 0 || redeemAmount > (ownedShares ?? 0)}
-                      className="w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 shadow-lg shadow-emerald-400/25"
-                    >
-                      {redeeming && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
-                      {!program ? "Connect Wallet" : redeeming ? "Redeeming…" : "Redeem Shares"}
-                    </button>
-                  </div>
-                )}
+                  <button type="button"
+                    onClick={handleRedeem}
+                    disabled={!program || redeeming || !remainingPositions || remainingPositions.length === 0}
+                    className="w-full h-12 rounded-2xl font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 shadow-lg shadow-emerald-400/25"
+                  >
+                    {redeeming && <Loader2 className="w-4 h-4 animate-spin inline mr-2" />}
+                    {!program ? "Connect Wallet" : redeeming ? "Redeeming…" : "Redeem"}
+                  </button>
+                </div>
               </>
             )}
 
@@ -1234,8 +1282,104 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                 This market has been fully settled. All shares have been redeemed and the NFT has returned to its creator.
               </div>
             )}
+        </div>
+  );
+
+  return (
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 pb-28 md:pb-8 text-slate-800 dark:text-slate-100">
+      <Link href="/marketplace">
+        <button type="button" className="flex items-center gap-1.5 mb-6 text-sm text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          Back to Marketplace
+        </button>
+      </Link>
+
+      <div className={`grid grid-cols-1 ${showSidebar ? "lg:grid-cols-[240px_1fr_320px]" : "lg:grid-cols-[1fr_320px]"} gap-4 items-start`}>
+        {/* ── Left: compact NFT / market info ── */}
+        {showSidebar && (
+          <div className={`${panel} p-4 flex flex-col gap-3`}>
+            <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-100 dark:bg-white/5 shrink-0 shadow-inner">
+              {market.metadata?.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={market.metadata.imageUrl} alt={market.metadata.name ?? "NFT"} className="w-full h-full object-cover" />
+              ) : null}
+            </div>
+            <div className="min-w-0 mb-1">
+              <h1 className="text-lg font-bold truncate">{currentMarketName}</h1>
+              <div className="text-xs text-slate-400 dark:text-slate-500">Live on devnet</div>
+            </div>
+
+            {market.state === "ACTIVE" && now !== null && (
+            <div className={`flex items-center gap-2 p-2.5 rounded-lg ${isExpired ? "bg-amber-50/80 dark:bg-amber-400/[0.07] border border-amber-200/60 dark:border-amber-400/15" : "bg-emerald-50/80 dark:bg-emerald-400/[0.06] border border-emerald-200/50 dark:border-emerald-400/15"}`}>
+              <Clock className={`w-3.5 h-3.5 shrink-0 ${isExpired ? "text-amber-500" : "text-emerald-500 dark:text-emerald-400"}`} />
+              <div className={`font-mono font-semibold text-xs tabular-nums ${isExpired ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                {isExpired ? "Awaiting settlement" : formatCountdown(market.expiresAt, now)}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col">
+            {[
+              { label: "Market Cap", sol: stats ? lamportsToSol(stats.marketCap) : 0 },
+              { label: "24h Volume", sol: stats ? lamportsToSol(stats.volume24h) : 0 },
+              { label: "Reserve Liquidity", sol: reserveSOL },
+            ].map(({ label, sol }) => (
+              <div key={label} className={`flex items-center justify-between py-2 ${panelRow}`}>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wide">{label}</div>
+                <div className="text-right">
+                  <div className="font-mono text-xs font-semibold">
+                    {solPriceUsd !== undefined ? `$${(sol * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${sol.toFixed(4)} SOL`}
+                  </div>
+                  {solPriceUsd !== undefined && <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500">{sol.toFixed(4)} SOL</div>}
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between py-2">
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wide">Shares / Holders</div>
+              <div className="font-mono text-xs font-semibold">
+                {outstandingSharesStr ?? "0"} / {(stats?.holderCount ?? 0).toString()}
+              </div>
+            </div>
+          </div>
+
+          {!canTrade && (
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50/80 dark:bg-amber-400/[0.07] border border-amber-200/60 dark:border-amber-400/15 text-[11px] text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              {market.state === "SETTLED"
+                ? "This market has been fully settled."
+                : market.state === "SETTLING"
+                  ? "Market is settling -- redeem your shares."
+                  : "This market has expired -- awaiting settlement."}
+            </div>
+          )}
+
+          <div className="pt-1">
+            <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1">Creator</div>
+            <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate">{market.creator}</div>
           </div>
         </div>
+        )}
+        {/* ── Center: chart (fullscreen-able) ── */}
+        {isChartFullscreen ? (
+          createPortal(
+            <div className="fixed inset-0 z-[100] bg-white dark:bg-[#05070a] p-4 overflow-hidden flex gap-4">
+              <div className="flex-1 min-w-0 h-full">{chartCard}</div>
+              {showFullscreenTrade && (
+                <div className="w-[320px] shrink-0 h-full overflow-hidden">
+                  {renderTradeCard()}
+                </div>
+              )}
+            </div>,
+            document.body
+          )
+        ) : (
+          <div className="min-w-0">{chartCard}</div>
+        )}
+
+        {/* ── Right: Trading / Settle / Redeem, beside the chart ── */}
+        {!isChartFullscreen && renderTradeCard()}
+
+
       </div>
     </div>
   );

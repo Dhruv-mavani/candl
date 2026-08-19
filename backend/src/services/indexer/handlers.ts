@@ -144,8 +144,8 @@ export async function handleSharesRedeemed(db: Db, event: SharesRedeemedEvent) {
     .set({
       outstandingShares: sql`${markets.outstandingShares} - ${event.shares}`,
       reserveSol: sql`${markets.reserveSol} - ${event.solReceived}`,
-      // redeem.rs flips the on-chain market to Settled once the last share
-      // redeems (outstanding_shares hits 0) -- mirror that transition here.
+      // force_redeem.rs flips the on-chain market to Settled once the last
+      // share redeems (outstanding_shares hits 0) -- mirror that transition here.
       state: remainingShares <= 0 ? "SETTLED" : "SETTLING",
     })
     .where(eq(markets.pubkey, event.market));

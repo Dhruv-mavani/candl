@@ -288,8 +288,8 @@ export type Candl = {
             "SystemAccount holding a nonzero balance below that threshold makes",
             "Solana reject the whole transaction (this is what small early buys",
             "hit before this seeding existed: see docs/15-decisions.md ADR #5).",
-            "The seed is refunded to `creator` in `redeem` once the market is",
-            "fully settled (see redeem.rs)."
+            "The seed is refunded to `creator` in `force_redeem` once the market",
+            "is fully settled (see force_redeem.rs)."
           ],
           "writable": true,
           "pda": {
@@ -424,86 +424,16 @@ export type Candl = {
       ]
     },
     {
-      "name": "initializeProtocol",
+      "name": "forceRedeem",
       "discriminator": [
-        188,
-        233,
-        252,
-        106,
-        134,
-        146,
-        202,
-        91
-      ],
-      "accounts": [
-        {
-          "name": "protocolConfig",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  114,
-                  111,
-                  116,
-                  111,
-                  99,
-                  111,
-                  108,
-                  95,
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "authority",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "systemProgram",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "curveAlpha",
-          "type": "u64"
-        },
-        {
-          "name": "curveBeta",
-          "type": "u64"
-        },
-        {
-          "name": "protocolFeeBps",
-          "type": "u16"
-        },
-        {
-          "name": "creatorFeeBps",
-          "type": "u16"
-        }
-      ]
-    },
-    {
-      "name": "redeem",
-      "discriminator": [
-        184,
-        12,
-        86,
-        149,
-        70,
-        196,
-        97,
-        225
+        121,
+        237,
+        203,
+        72,
+        208,
+        140,
+        141,
+        130
       ],
       "accounts": [
         {
@@ -613,7 +543,19 @@ export type Candl = {
         },
         {
           "name": "trader",
-          "writable": true,
+          "docs": [
+            "instruction. Only ever credited lamports (never debited), and",
+            "trader_position's seeds already tie this exact pubkey to a real,",
+            "existing position, so it can't be swapped for an arbitrary account."
+          ],
+          "writable": true
+        },
+        {
+          "name": "caller",
+          "docs": [
+            "Whoever is triggering this redemption on the trader's behalf. Only",
+            "pays the transaction fee -- never receives or redirects any funds."
+          ],
           "signer": true
         },
         {
@@ -671,6 +613,76 @@ export type Candl = {
         {
           "name": "shares",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initializeProtocol",
+      "discriminator": [
+        188,
+        233,
+        252,
+        106,
+        134,
+        146,
+        202,
+        91
+      ],
+      "accounts": [
+        {
+          "name": "protocolConfig",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "curveAlpha",
+          "type": "u64"
+        },
+        {
+          "name": "curveBeta",
+          "type": "u64"
+        },
+        {
+          "name": "protocolFeeBps",
+          "type": "u16"
+        },
+        {
+          "name": "creatorFeeBps",
+          "type": "u16"
         }
       ]
     },

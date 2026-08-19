@@ -1,5 +1,5 @@
 import { Connection, PublicKey } from "@solana/web3.js";
-import { decodeCandlEvent } from "../src/services/indexer/decode.js";
+import { decodeCandlEvents } from "../src/services/indexer/decode.js";
 
 const PROGRAM_ID = new PublicKey("JDqvbHqaL1W57YALJnY1Lyyi6Ai5aFMaNi1mzYATTYAa");
 const connection = new Connection("https://api.devnet.solana.com", "confirmed");
@@ -12,6 +12,6 @@ for (const { signature } of signatures) {
   const logs = tx?.meta?.logMessages;
   if (!logs) continue;
 
-  const event = decodeCandlEvent(logs, signature);
-  console.log(signature, "->", event ? event.type : "no event decoded", event ?? "");
+  const events = decodeCandlEvents(logs, signature);
+  console.log(signature, "->", events.length ? events.map((e) => e.type).join(", ") : "no event decoded", events);
 }

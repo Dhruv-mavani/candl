@@ -1,6 +1,6 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import type { getDb } from "../../db/index.js";
-import { decodeCandlEvent, fetchMarketConfig } from "./decode.js";
+import { decodeCandlEvents, fetchMarketConfig } from "./decode.js";
 import {
   handleMarketCreated,
   handleMarketExtended,
@@ -53,16 +53,23 @@ export function startIndexer(db: Db): IndexerHandle {
 async function handleLogs(db: Db, connection: Connection, logs: string[], signature: string, hasError: boolean) {
   if (hasError) return;
 
-  const event = decodeCandlEvent(logs, signature);
-  if (!event) return;
+  const events = decodeCandlEvents(logs, signature);
 
-  try {
-    if (event.type === "MarketCreated") await handleMarketCreated(db, event, await fetchMarketConfig(connection, event.market));
-    else if (event.type === "TradeExecuted") await handleTradeExecuted(db, event);
-    else if (event.type === "MarketSettled") await handleMarketSettled(db, event);
-    else if (event.type === "MarketExtended") await handleMarketExtended(db, event);
-    else if (event.type === "SharesRedeemed") await handleSharesRedeemed(db, event);
-  } catch (err) {
-    console.error(`[indexer] failed to process ${event.type} from ${signature}:`, err);
+  // Processed in order, one at a time (not Promise.all): redeemAll bundles
+  // multiple force_redeem instructions -- and so multiple SharesRedeemed
+  // events -- into a single transaction, and handleSharesRedeemed reads the
+  // market's current outstandingShares before decrementing it, so each
+  // event in this loop needs to see the previous one's write already
+  // applied to converge on the right final state (see handlers.ts).
+  for (const event of events) {
+    try {
+      if (event.type === "MarketCreated") await handleMarketCreated(db, event, await fetchMarketConfig(connection, event.market));
+      else if (event.type === "TradeExecuted") await handleTradeExecuted(db, event);
+      else if (event.type === "MarketSettled") await handleMarketSettled(db, event);
+      else if (event.type === "MarketExtended") await handleMarketExtended(db, event);
+      else if (event.type === "SharesRedeemed") await handleSharesRedeemed(db, event);
+    } catch (err) {
+      console.error(`[indexer] failed to process ${event.type} from ${signature}:`, err);
+    }
   }
 }

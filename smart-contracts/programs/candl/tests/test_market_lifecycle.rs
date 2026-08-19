@@ -295,15 +295,20 @@ fn settle_and_full_redemption_returns_nft_to_creator() {
 
     let position: TraderPosition = fetch(&ctx.svm, &ctx.trader_position);
     let creator_balance_before = ctx.svm.get_balance(&ctx.creator.pubkey()).unwrap();
+    // Self-redeem via force_redeem: trader and caller are the same wallet,
+    // which signs as caller. `redeem` no longer exists as a separate
+    // instruction -- force_redeem is a strict superset of it (see
+    // docs/04-market-lifecycle.md).
     let redeem_ix = Instruction::new_with_bytes(
         candl::id(),
-        &candl::instruction::Redeem { shares: position.shares }.data(),
-        candl::accounts::Redeem {
+        &candl::instruction::ForceRedeem { shares: position.shares }.data(),
+        candl::accounts::ForceRedeem {
             market: ctx.market,
             bonding_curve: ctx.bonding_curve,
             vault: ctx.vault,
             trader_position: ctx.trader_position,
             trader: ctx.trader.pubkey(),
+            caller: ctx.trader.pubkey(),
             escrow: ctx.escrow,
             nft_mint: ctx.nft_mint.pubkey(),
             creator_token_account: ctx.creator_return_token_account.pubkey(),

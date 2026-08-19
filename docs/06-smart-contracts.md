@@ -143,7 +143,7 @@ pub enum CurveType {
 **Actions**:
 - Transfer NFT to escrow PDA.
 - Initialize Market (copying `fee_protocol_bps`/`fee_creator_bps` from `ProtocolConfig`) and BondingCurve state (`outstanding_shares = 0`, `real_sol_reserves = 0`).
-- Creator pays Solana's rent-exempt minimum (~0.00089 SOL) into `vault` so it starts above the runtime's minimum-balance threshold -- without this, a `buy` small enough to leave `vault` nonzero-but-below-threshold fails the whole transaction (docs/15-decisions.md ADR #5). This deposit is separate from `real_sol_reserves` and is refunded in full to the creator by `redeem` once the market is fully settled.
+- Creator pays Solana's rent-exempt minimum (~0.00089 SOL) into `vault` so it starts above the runtime's minimum-balance threshold -- without this, a `buy` small enough to leave `vault` nonzero-but-below-threshold fails the whole transaction (docs/15-decisions.md ADR #5). This deposit is separate from `real_sol_reserves` and is refunded in full to the creator by `force_redeem` once the market is fully settled.
 - Emit `MarketCreated` event.
 
 ### 3. `buy`
@@ -205,18 +205,19 @@ pub enum CurveType {
 - Change state to `Settling`.
 - Emit `MarketSettled` event.
 
-### 7. `redeem`
+### 7. `force_redeem`
 
-**Description**: Redeem shares for a proportional amount of the final SOL reserve during settlement.
+**Description**: Redeem a trader's shares for a proportional amount of the final SOL reserve during settlement. Permissionless -- the trader being redeemed doesn't need to sign; anyone (`caller`) can trigger it on their behalf, paying only the network fee. A self-redemption is just this same instruction with `trader` and `caller` set to the same wallet, signing as `caller`. See docs/04-market-lifecycle.md for why this exists (a single non-returning shareholder can't be allowed to trap a market in `Settling` forever).
 
 **Validations**:
 - Market state must be `Settling`.
-- Signer must own shares.
+- `trader` must hold shares (validated against `trader_position`, not a signature).
+- `caller` must sign (pays the transaction fee only -- never receives or redirects funds).
 
 **Actions**:
 - Calculate proportional SOL: `(shares / outstanding_shares) * real_sol_reserves`.
 - Burn shares.
-- Transfer SOL to user.
+- Transfer SOL to `trader`.
 - If `outstanding_shares` becomes 0, change state to `Settled`, return NFT to creator, and refund `vault`'s remaining balance (the rent-exempt seed from `create_market`, untouched by ordinary trading) to creator.
 - Emit `SharesRedeemed` event.
 

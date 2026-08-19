@@ -35,8 +35,8 @@ pub struct CreateMarket<'info> {
     /// SystemAccount holding a nonzero balance below that threshold makes
     /// Solana reject the whole transaction (this is what small early buys
     /// hit before this seeding existed: see docs/15-decisions.md ADR #5).
-    /// The seed is refunded to `creator` in `redeem` once the market is
-    /// fully settled (see redeem.rs).
+    /// The seed is refunded to `creator` in `force_redeem` once the market
+    /// is fully settled (see force_redeem.rs).
     #[account(mut, seeds = [VAULT_SEED, market.key().as_ref()], bump)]
     pub vault: SystemAccount<'info>,
 
@@ -92,7 +92,7 @@ pub fn handler(ctx: Context<CreateMarket>, duration: i64) -> Result<()> {
     // Bootstrap the vault past Solana's rent-exempt floor so the first buy
     // -- however small -- doesn't leave it in a nonzero-but-sub-threshold
     // state, which the runtime rejects outright. Refunded to creator on
-    // full settlement (redeem.rs).
+    // full settlement (force_redeem.rs).
     let vault_rent_exempt_minimum = ctx.accounts.rent.minimum_balance(0);
     sol_system_program::transfer(
         CpiContext::new(

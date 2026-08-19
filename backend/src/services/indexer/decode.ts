@@ -23,11 +23,17 @@ function toBase58(value: unknown): string {
 }
 
 /**
- * Decodes Candl program events out of a transaction's log lines, using the
- * real deployed program's IDL (backend/src/idl/candl.json). Each Anchor
- * instruction emits at most one event, so the first match wins.
+ * Decodes every Candl program event out of a transaction's log lines, using
+ * the real deployed program's IDL (backend/src/idl/candl.json). Each Anchor
+ * instruction emits at most one event, but a single transaction can bundle
+ * multiple instructions (redeemAll in frontend/src/lib/candl-program.ts
+ * sends one force_redeem per remaining holder in one transaction), so a
+ * transaction's logs can carry multiple events -- all of them are decoded
+ * and returned, not just the first match.
  */
-export function decodeCandlEvent(logs: string[], signature: string): CandlEvent | null {
+export function decodeCandlEvents(logs: string[], signature: string): CandlEvent[] {
+  const events: CandlEvent[] = [];
+
   for (const event of eventParser.parseLogs(logs)) {
     const data = event.data as Record<string, unknown>;
 
@@ -36,17 +42,17 @@ export function decodeCandlEvent(logs: string[], signature: string): CandlEvent 
     // BorshEventCoder does NOT camelCase event field names at decode time --
     // verified empirically against a real devnet MarketCreated event.
     if (event.name === "MarketCreated") {
-      return {
+      events.push({
         type: "MarketCreated",
         market: toBase58(data.market),
         nftMint: toBase58(data.nft_mint),
         creator: toBase58(data.creator),
         timestamp: toNumber(data.timestamp),
-      };
+      });
     }
 
     if (event.name === "TradeExecuted") {
-      return {
+      events.push({
         type: "TradeExecuted",
         market: toBase58(data.market),
         trader: toBase58(data.trader),
@@ -57,38 +63,38 @@ export function decodeCandlEvent(logs: string[], signature: string): CandlEvent 
         feePaid: toNumber(data.fee_paid),
         timestamp: toNumber(data.timestamp),
         signature,
-      };
+      });
     }
 
     if (event.name === "MarketSettled") {
-      return {
+      events.push({
         type: "MarketSettled",
         market: toBase58(data.market),
         finalReserve: toNumber(data.final_reserve),
         timestamp: toNumber(data.timestamp),
-      };
+      });
     }
 
     if (event.name === "MarketExtended") {
-      return {
+      events.push({
         type: "MarketExtended",
         market: toBase58(data.market),
         newExpiresAt: toNumber(data.new_expires_at),
-      };
+      });
     }
 
     if (event.name === "SharesRedeemed") {
-      return {
+      events.push({
         type: "SharesRedeemed",
         market: toBase58(data.market),
         trader: toBase58(data.trader),
         shares: toNumber(data.shares),
         solReceived: toNumber(data.sol_received),
-      };
+      });
     }
   }
 
-  return null;
+  return events;
 }
 
 export interface OnChainMarketConfig {

@@ -7,16 +7,19 @@ use crate::errors::CandlError;
 use crate::events::SharesRedeemed;
 use crate::state::{BondingCurve, Market, MarketState, TraderPosition};
 
-/// Identical to `redeem` except `trader` is not required to sign -- anyone
-/// (`caller`) can trigger a specific trader's redemption on their behalf.
-/// This is safe because `trader` isn't a free-form input: `trader_position`'s
-/// seeds bind it to this exact pubkey, so the payout amount and destination
-/// are both derived entirely from the trader's own on-chain position, never
-/// from anything `caller` supplies. `caller` only ever pays the network fee;
-/// they can't redirect funds or change the amount. See docs/04-market-lifecycle.md
-/// -- without this, a single trader who never comes back to redeem leaves a
-/// market stuck in Settling forever, since the creator can't reclaim their
-/// NFT until every share is redeemed.
+/// Redeems a trader's shares for their proportional share of the settling
+/// market's reserve. `trader` is not required to sign -- anyone (`caller`)
+/// can trigger a specific trader's redemption on their behalf, including the
+/// trader themselves (self-redeem: pass the same pubkey as both `trader` and
+/// `caller`, signing only as `caller`). This is safe because `trader` isn't a
+/// free-form input: `trader_position`'s seeds bind it to this exact pubkey,
+/// so the payout amount and destination are both derived entirely from the
+/// trader's own on-chain position, never from anything `caller` supplies.
+/// `caller` only ever pays the network fee; they can't redirect funds or
+/// change the amount. See docs/04-market-lifecycle.md -- without this
+/// permissionless path, a single trader who never comes back to redeem
+/// leaves a market stuck in Settling forever, since the creator can't
+/// reclaim their NFT until every share is redeemed.
 #[derive(Accounts)]
 pub struct ForceRedeem<'info> {
     #[account(

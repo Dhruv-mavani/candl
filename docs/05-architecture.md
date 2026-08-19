@@ -59,7 +59,7 @@ candl/
 │       │   │   ├── sell.rs
 │       │   │   ├── settle.rs
 │       │   │   ├── extend_market.rs
-│       │   │   └── redeem.rs
+│       │   │   └── force_redeem.rs
 │       │   ├── state/             # Account structures
 │       │   │   ├── market.rs
 │       │   │   └── bonding_curve.rs
@@ -138,7 +138,7 @@ programs/candl/src/
 │   ├── sell.rs                    # Sell shares
 │   ├── extend_market.rs           # Extend market duration
 │   ├── settle.rs                  # Transition to settlement
-│   └── redeem.rs                  # Redeem shares for SOL
+│   └── force_redeem.rs            # Redeem a trader's shares for SOL (permissionless)
 ├── state/
 │   ├── mod.rs                     # Re-exports
 │   ├── market.rs                  # Market account
@@ -165,7 +165,7 @@ programs/candl/src/
 | `sell` | Sell shares for SOL | Share holder only |
 | `extend_market` | Extend market duration | Creator only |
 | `settle` | Transition expired market to settlement | Anyone (permissionless) |
-| `redeem` | Redeem shares for proportional SOL | Share holder only |
+| `force_redeem` | Redeem a trader's shares for proportional SOL | Anyone (payout always goes to the trader, never the caller) |
 
 ### Events
 

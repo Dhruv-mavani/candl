@@ -12,7 +12,7 @@ The Candl SDK abstracts the complexity of Anchor program calls, providing a clea
 
 - Fetching market state.
 - Estimating buy/sell outputs (price impact and slippage calculation).
-- Building and sending transactions (create, buy, sell, extend, settle, redeem).
+- Building and sending transactions (create, buy, sell, extend, settle, force_redeem).
 - Parsing on-chain events.
 
 ## Installation (Future)

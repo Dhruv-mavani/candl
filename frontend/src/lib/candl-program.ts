@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useAnchorWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider, BN, Program } from "@anchor-lang/core";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import idl from "./idl/candl.json";
 import type { Candl } from "./idl/candl";
@@ -193,20 +193,24 @@ export async function settleMarket({ program, nftMint }: { program: Program<Cand
   return { signature };
 }
 
-export interface RedeemParams {
+export interface RedeemAllParams {
   program: Program<Candl>;
-  trader: PublicKey;
+  caller: PublicKey;
   nftMint: PublicKey;
   creator: PublicKey;
-  shareAmount: number;
 }
 
-function resolveRedeemAccounts(nftMint: PublicKey, trader: PublicKey, creator: PublicKey) {
+export interface RemainingPosition {
+  trader: PublicKey;
+  shares: number;
+}
+
+function resolveForceRedeemAccounts(nftMint: PublicKey, trader: PublicKey, caller: PublicKey, creator: PublicKey) {
   const { market, bondingCurve, vault, escrow } = deriveCandlPdas(nftMint);
   const traderPosition = deriveTraderPosition(market, trader);
-  // redeem.rs requires this to already exist (the creator's own ATA from
-  // create_market's deposit, now empty since the NFT moved to escrow), so
-  // unlike createMarket there's nothing here that needs init_if_needed.
+  // force_redeem.rs requires this to already exist (the creator's own ATA
+  // from create_market's deposit, now empty since the NFT moved to escrow),
+  // so unlike createMarket there's nothing here that needs init_if_needed.
   const creatorTokenAccount = getAssociatedTokenAddressSync(nftMint, creator);
 
   return {
@@ -215,6 +219,7 @@ function resolveRedeemAccounts(nftMint: PublicKey, trader: PublicKey, creator: P
     vault,
     traderPosition,
     trader,
+    caller,
     escrow,
     nftMint,
     creatorTokenAccount,
@@ -225,28 +230,56 @@ function resolveRedeemAccounts(nftMint: PublicKey, trader: PublicKey, creator: P
 }
 
 /**
- * Authoritative redemption preview: simulates the real instruction and
- * reads back its emitted SharesRedeemed.sol_received rather than
- * reimplementing the pro-rata payout formula in the frontend.
+ * Every trader position still holding shares in this market, read straight
+ * from on-chain TraderPosition accounts (not a trade-log-derived table,
+ * which wouldn't reflect redemptions already paid out) -- this is the "who
+ * still needs to be redeemed" list redeemAll() acts on.
  */
-export async function quoteRedeem({ program, trader, nftMint, creator, shareAmount }: RedeemParams): Promise<{ solReceived: string }> {
-  const accounts = resolveRedeemAccounts(nftMint, trader, creator);
-  const shares = new BN(shareAmount);
+export async function getRemainingPositions({
+  program,
+  nftMint,
+}: {
+  program: Program<Candl>;
+  nftMint: PublicKey;
+}): Promise<RemainingPosition[]> {
+  const { market } = deriveCandlPdas(nftMint);
+  const positions = await program.account.traderPosition.all([
+    { memcmp: { offset: 8, bytes: market.toBase58() } },
+  ]);
 
-  const { events } = await program.methods.redeem(shares).accountsStrict(accounts).simulate();
-
-  const event = events.find((e) => e.name.toLowerCase() === "sharesredeemed");
-  if (!event) throw new Error("Simulation did not emit a SharesRedeemed event.");
-  return { solReceived: String(event.data.solReceived) };
+  return positions
+    .map((p) => ({ trader: p.account.trader as PublicKey, shares: Number(p.account.shares) }))
+    .filter((p) => p.shares > 0);
 }
 
-/** Sends the real redeem transaction -- pays out shareAmount's pro-rata share of the reserve. */
-export async function redeem({ program, trader, nftMint, creator, shareAmount }: RedeemParams) {
-  const accounts = resolveRedeemAccounts(nftMint, trader, creator);
+/**
+ * Redeems every remaining shareholder in a settling market in one
+ * transaction -- the caller's own position (if any) plus everyone else's,
+ * via force_redeem for each. Only the caller pays the network fee; every
+ * payout still goes to its own trader, never to the caller (force_redeem.rs).
+ * This is what actually lets a market reach Settled instead of staying stuck
+ * because one holder never came back to redeem themselves
+ * (docs/04-market-lifecycle.md).
+ */
+export async function redeemAll({ program, caller, nftMint, creator }: RedeemAllParams) {
+  const positions = await getRemainingPositions({ program, nftMint });
+  if (positions.length === 0) {
+    throw new Error("No remaining shares to redeem.");
+  }
 
-  const signature = await program.methods.redeem(new BN(shareAmount)).accountsStrict(accounts).rpc();
+  const instructions = await Promise.all(
+    positions.map((p) =>
+      program.methods
+        .forceRedeem(new BN(p.shares))
+        .accountsStrict(resolveForceRedeemAccounts(nftMint, p.trader, caller, creator))
+        .instruction()
+    )
+  );
 
-  return { signature };
+  const tx = new Transaction().add(...instructions);
+  const signature = await (program.provider as AnchorProvider).sendAndConfirm(tx);
+
+  return { signature, redeemedCount: positions.length };
 }
 
 export interface CreateMarketParams {
