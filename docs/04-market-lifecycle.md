@@ -160,6 +160,7 @@ Market duration expires
     ├── Market state = SETTLING
     ├── No new buys allowed
     ├── Shareholders can redeem shares for SOL
+    ├── Anyone can redeem on a shareholder's behalf via force_redeem
     ├── Creator can claim accumulated royalties
     └── After all shares redeemed → Market state = SETTLED
 ```
@@ -177,12 +178,11 @@ This is different from selling during the active phase:
 - **Active trading**: Price is determined by the bonding curve. Large sells have price impact.
 - **Settlement redemption**: Price is proportional. Everyone gets their fair share of the reserve.
 
+`redeem` requires the shareholder's own signature. `force_redeem` is the same instruction with that requirement lifted: anyone can trigger it on a specific shareholder's behalf, paying only the network fee. It cannot redirect funds or change the amount -- the payout destination and size are both derived from that shareholder's own on-chain position (`trader_position`), never from anything the caller supplies. This exists so a market never gets stuck forever just because one shareholder lost their wallet or never comes back: the creator (who wants their NFT back, see below) or anyone else can simply pay out every remaining holder.
+
 ### NFT Return
 
-After settlement:
-
-- If the market is fully settled (all shares redeemed), the NFT is returned to the creator.
-- If shares remain unredeemed after a grace period, the creator can still reclaim the NFT, and remaining share holders can redeem at any time.
+After settlement, the NFT is returned to the creator once every share has been redeemed -- via `redeem`, `force_redeem`, or a mix of both. There is no grace period or timeout that returns the NFT early: as long as even one share is outstanding, the market stays in Settling. `force_redeem` is what keeps this from meaning "forever" in practice.
 
 ### Creator Payout
 
@@ -205,12 +205,13 @@ The creator's accumulated royalties are paid out during or after settlement. Roy
                     ┌──────▼───────┐
                     │   SETTLING   │
                     │              │
-                    │  Redeem only  │
+                    │  Redeem /     │
+                    │  force_redeem │
                     │  No new buys  │
                     └──────┬───────┘
                            │
                     all shares redeemed
-                    or grace period expires
+                    (self or forced)
                            │
                     ┌──────▼───────┐
                     │   SETTLED    │
@@ -230,7 +231,7 @@ The creator's accumulated royalties are paid out during or after settlement. Roy
 | Market expires | `created_at + duration` | Calculated |
 | Market extended | `expires_at + extension` | Creator instruction |
 | Settlement starts | `expires_at` | Automatic (checked on next interaction) |
-| Market settled | When all shares redeemed or grace period ends | Checked on interaction |
+| Market settled | When all shares redeemed (via `redeem` and/or `force_redeem`) | Checked on interaction |
 
 Note: Solana doesn't have automatic timers. State transitions are checked and enforced when users interact with the market (e.g., when someone tries to buy after expiry, the market is transitioned to SETTLING).
 
@@ -268,5 +269,5 @@ If only one person bought shares and the market expires, that person redeems 100
 |---|---|---|
 | **Creation** | Instant | Deposit NFT, configure curve, set duration |
 | **Active** | Market duration (days/weeks) | Buy, sell, extend duration |
-| **Settling** | Until all shares redeemed or grace period | Redeem shares, claim royalties |
+| **Settling** | Until all shares redeemed | Redeem/force_redeem shares, claim royalties |
 | **Settled** | Permanent | NFT returned, market closed |

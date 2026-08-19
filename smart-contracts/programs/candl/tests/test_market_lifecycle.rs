@@ -378,3 +378,124 @@ fn extend_market_pushes_out_expiry_and_only_creator_can_call_it() {
     let result = send(&mut ctx.svm, &[bad_extend_ix], &ctx.trader, &[]);
     assert!(result.is_err(), "a non-creator must not be able to extend the market");
 }
+
+/// A trader who never comes back to redeem would otherwise leave the market
+/// stuck in Settling forever (the creator can't reclaim their NFT until every
+/// share is redeemed) -- force_redeem lets anyone pay a stranger's already-
+/// determined payout to their already-fixed wallet, so the market can still
+/// reach Settled without that trader lifting a finger.
+#[test]
+fn force_redeem_lets_a_stranger_pay_out_the_trader_and_still_settle_the_market() {
+    let mut ctx = setup();
+    let buy = buy_ix(&ctx, 100, 10 * LAMPORTS_PER_SOL);
+    send(&mut ctx.svm, &[buy], &ctx.trader, &[]).unwrap();
+
+    let mut clock: anchor_lang::prelude::Clock = ctx.svm.get_sysvar();
+    clock.unix_timestamp += 8 * ONE_DAY;
+    ctx.svm.set_sysvar(&clock);
+
+    let settle_ix = Instruction::new_with_bytes(
+        candl::id(),
+        &candl::instruction::Settle {}.data(),
+        candl::accounts::Settle { market: ctx.market, bonding_curve: ctx.bonding_curve }.to_account_metas(None),
+    );
+    send(&mut ctx.svm, &[settle_ix], &ctx.trader, &[]).unwrap();
+
+    // A stranger with no stake in this market at all -- never bought,
+    // never sold, has nothing to do with the trader or the creator.
+    let stranger = Keypair::new();
+    ctx.svm.airdrop(&stranger.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+
+    let position: TraderPosition = fetch(&ctx.svm, &ctx.trader_position);
+    let trader_balance_before = ctx.svm.get_balance(&ctx.trader.pubkey()).unwrap();
+    let stranger_balance_before = ctx.svm.get_balance(&stranger.pubkey()).unwrap();
+
+    let force_redeem_ix = Instruction::new_with_bytes(
+        candl::id(),
+        &candl::instruction::ForceRedeem { shares: position.shares }.data(),
+        candl::accounts::ForceRedeem {
+            market: ctx.market,
+            bonding_curve: ctx.bonding_curve,
+            vault: ctx.vault,
+            trader_position: ctx.trader_position,
+            trader: ctx.trader.pubkey(),
+            caller: stranger.pubkey(),
+            escrow: ctx.escrow,
+            nft_mint: ctx.nft_mint.pubkey(),
+            creator_token_account: ctx.creator_return_token_account.pubkey(),
+            creator: ctx.creator.pubkey(),
+            token_program: spl_token::id(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    );
+    // The stranger pays and signs -- the trader signs nothing at all.
+    send(&mut ctx.svm, &[force_redeem_ix], &stranger, &[]).unwrap();
+
+    let market: Market = fetch(&ctx.svm, &ctx.market);
+    assert_eq!(market.state, MarketState::Settled, "market must reach Settled even though the trader never redeemed themselves");
+
+    let trader_balance_after = ctx.svm.get_balance(&ctx.trader.pubkey()).unwrap();
+    assert!(trader_balance_after > trader_balance_before, "the trader -- not the stranger -- must receive the payout");
+
+    let stranger_balance_after = ctx.svm.get_balance(&stranger.pubkey()).unwrap();
+    assert!(
+        stranger_balance_after <= stranger_balance_before,
+        "the stranger must only ever be out the network fee, never receive any part of the trader's payout"
+    );
+
+    let creator_nft_account =
+        SplTokenAccount::unpack(&ctx.svm.get_account(&ctx.creator_return_token_account.pubkey()).unwrap().data).unwrap();
+    assert_eq!(creator_nft_account.amount, 1, "NFT must still return to the creator via a stranger-triggered redemption");
+}
+
+/// The `trader` account is constrained to trader_position.trader, so nobody
+/// can point the payout at their own wallet while redeeming someone else's
+/// shares -- this is the property that makes the instruction safe to leave
+/// permissionless in the first place.
+#[test]
+fn force_redeem_rejects_a_mismatched_trader_account() {
+    let mut ctx = setup();
+    let buy = buy_ix(&ctx, 100, 10 * LAMPORTS_PER_SOL);
+    send(&mut ctx.svm, &[buy], &ctx.trader, &[]).unwrap();
+
+    let mut clock: anchor_lang::prelude::Clock = ctx.svm.get_sysvar();
+    clock.unix_timestamp += 8 * ONE_DAY;
+    ctx.svm.set_sysvar(&clock);
+
+    let settle_ix = Instruction::new_with_bytes(
+        candl::id(),
+        &candl::instruction::Settle {}.data(),
+        candl::accounts::Settle { market: ctx.market, bonding_curve: ctx.bonding_curve }.to_account_metas(None),
+    );
+    send(&mut ctx.svm, &[settle_ix], &ctx.trader, &[]).unwrap();
+
+    let stranger = Keypair::new();
+    ctx.svm.airdrop(&stranger.pubkey(), 10 * LAMPORTS_PER_SOL).unwrap();
+
+    let position: TraderPosition = fetch(&ctx.svm, &ctx.trader_position);
+    // Attempt to redirect the trader's payout to the stranger's own wallet
+    // instead of the trader's -- trader_position still seeds/derives to the
+    // real trader, so this must be rejected outright.
+    let bad_force_redeem_ix = Instruction::new_with_bytes(
+        candl::id(),
+        &candl::instruction::ForceRedeem { shares: position.shares }.data(),
+        candl::accounts::ForceRedeem {
+            market: ctx.market,
+            bonding_curve: ctx.bonding_curve,
+            vault: ctx.vault,
+            trader_position: ctx.trader_position,
+            trader: stranger.pubkey(),
+            caller: stranger.pubkey(),
+            escrow: ctx.escrow,
+            nft_mint: ctx.nft_mint.pubkey(),
+            creator_token_account: ctx.creator_return_token_account.pubkey(),
+            creator: ctx.creator.pubkey(),
+            token_program: spl_token::id(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    );
+    let result = send(&mut ctx.svm, &[bad_force_redeem_ix], &stranger, &[]);
+    assert!(result.is_err(), "redirecting a redemption to a mismatched trader account must fail");
+}

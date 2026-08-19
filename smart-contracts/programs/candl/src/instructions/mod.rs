@@ -1,6 +1,7 @@
 pub mod buy;
 pub mod create_market;
 pub mod extend_market;
+pub mod force_redeem;
 pub mod initialize_protocol;
 pub mod redeem;
 pub mod sell;
@@ -17,6 +18,7 @@ mod reexports {
     pub use super::buy::*;
     pub use super::create_market::*;
     pub use super::extend_market::*;
+    pub use super::force_redeem::*;
     pub use super::initialize_protocol::*;
     pub use super::redeem::*;
     pub use super::sell::*;

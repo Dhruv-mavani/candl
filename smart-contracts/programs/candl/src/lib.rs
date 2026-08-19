@@ -51,4 +51,8 @@ pub mod candl {
     pub fn redeem(ctx: Context<Redeem>, shares: u64) -> Result<()> {
         redeem::handler(ctx, shares)
     }
+
+    pub fn force_redeem(ctx: Context<ForceRedeem>, shares: u64) -> Result<()> {
+        force_redeem::handler(ctx, shares)
+    }
 }
