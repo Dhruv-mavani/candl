@@ -2,6 +2,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { CandlSimulator } from "./CandlSimulator";
 import { TrendingUp, ArrowRight, Zap, Shield, Users, Briefcase, Rocket, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { nftData } from "@/lib/mockData";
@@ -84,6 +86,19 @@ export function Home() {
   const topGainers = [...nftData]
     .sort((a, b) => b.priceChange24h - a.priceChange24h)
     .slice(0, 3);
+
+  // Post-launch (WAITLIST_MODE off), these two buttons need a connected
+  // wallet before "deposit an asset" or "explore markets" means anything --
+  // open the connect modal directly rather than dropping a disconnected
+  // visitor onto /portfolio or /marketplace with nothing to do there yet.
+  const { connected } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const handlePostLaunchCta = (e: React.MouseEvent) => {
+    if (!connected) {
+      e.preventDefault();
+      setWalletModalVisible(true);
+    }
+  };
 
   return (
     <div className="pb-24 md:pb-0 text-slate-800 dark:text-slate-100">
@@ -297,12 +312,16 @@ export function Home() {
               </p>
               
               <div className="mt-auto">
-                <button type="button" className="group inline-flex items-center gap-3 text-sm font-bold text-slate-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+                <Link
+                  href={WAITLIST_MODE ? "/waitlist" : "/portfolio"}
+                  onClick={WAITLIST_MODE ? undefined : handlePostLaunchCta}
+                  className="group inline-flex items-center gap-3 text-sm font-bold text-slate-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                >
                   <span className="border-b border-slate-900 dark:border-white group-hover:border-emerald-600 dark:group-hover:border-emerald-400 pb-0.5 transition-colors">
                     DEPOSIT ASSET
                   </span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </button>
+                </Link>
               </div>
             </div>
 
@@ -324,12 +343,16 @@ export function Home() {
               </p>
               
               <div className="mt-auto">
-                <button type="button" className="group inline-flex items-center gap-3 text-sm font-bold text-slate-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400 transition-colors">
+                <Link
+                  href={WAITLIST_MODE ? "/waitlist" : "/marketplace"}
+                  onClick={WAITLIST_MODE ? undefined : handlePostLaunchCta}
+                  className="group inline-flex items-center gap-3 text-sm font-bold text-slate-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
+                >
                   <span className="border-b border-slate-900 dark:border-white group-hover:border-sky-600 dark:group-hover:border-sky-400 pb-0.5 transition-colors">
                     EXPLORE MARKETS
                   </span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </button>
+                </Link>
               </div>
             </div>
 
