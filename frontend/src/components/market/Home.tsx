@@ -174,19 +174,26 @@ export function Home() {
             </a>
           </div>
 
-          {/* Stats */}
-          <div className={`grid grid-cols-3 gap-px mt-14 rounded-2xl overflow-hidden ${glass}`}>
-            {[
-              { value: <AnimatedCounter end={2.4} decimals={1} prefix="$" suffix="M+" />, label: "Trading Volume", color: "text-emerald-500 dark:text-emerald-400" },
-              { value: <AnimatedCounter end={12} suffix="K+" />, label: "Active Traders", color: "text-amber-500 dark:text-amber-400" },
-              { value: <AnimatedCounter end={500} suffix="+" />, label: "Listed NFTs", color: "text-sky-500 dark:text-sky-400" },
-            ].map(({ value, label, color }) => (
-              <div key={label} className="py-6 px-4 bg-white/30 dark:bg-white/[0.03]">
-                <div className={`text-3xl font-bold ${color}`}>{value}</div>
-                <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">{label}</div>
-              </div>
-            ))}
-          </div>
+          {/* Stats: pre-launch has no real trading volume/traders/listings yet
+              to report, so this section is skipped entirely rather than
+              showing placeholder numbers as if they were real (matches how
+              the marketplace page dropped its mock "Demo Markets" section
+              for the same reason). Reinstate once backed by real protocol
+              stats -- see backend/src/services/analytics/protocol-stats.ts. */}
+          {!WAITLIST_MODE && (
+            <div className={`grid grid-cols-3 gap-px mt-14 rounded-2xl overflow-hidden ${glass}`}>
+              {[
+                { value: <AnimatedCounter end={2.4} decimals={1} prefix="$" suffix="M+" />, label: "Trading Volume", color: "text-emerald-500 dark:text-emerald-400" },
+                { value: <AnimatedCounter end={12} suffix="K+" />, label: "Active Traders", color: "text-amber-500 dark:text-amber-400" },
+                { value: <AnimatedCounter end={500} suffix="+" />, label: "Listed NFTs", color: "text-sky-500 dark:text-sky-400" },
+              ].map(({ value, label, color }) => (
+                <div key={label} className="py-6 px-4 bg-white/30 dark:bg-white/[0.03]">
+                  <div className={`text-3xl font-bold ${color}`}>{value}</div>
+                  <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
