@@ -25,13 +25,15 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { createChart, ColorType, CandlestickSeries, HistogramSeries, LineSeries, LineStyle, CrosshairMode, PriceScaleMode } from "lightweight-charts";
 import type { IChartApi, ISeriesApi, SeriesType, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
 
-import { getMarket, getMarkets, getCandles, getMarketStats, type CandleResolution, type RealMarket } from "@/lib/api";
+import { getMarket, getMarkets, getCandles, getMarketStats, getCreatorEarnings, getTraderPortfolio, type CandleResolution, type RealMarket } from "@/lib/api";
 import { formatCountdown } from "@/lib/format";
 import { useSolPriceUsd } from "@/lib/solPrice";
 import { sma, ema, bollingerBands, rsi, macd, vwap } from "@/lib/indicators";
@@ -126,6 +128,21 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     { refreshInterval: 10_000 }
   );
 
+  const { data: creatorEarnings } = useSWR(
+    market ? `creatorEarnings:${market.creator}` : null,
+    () => getCreatorEarnings(market!.creator),
+    { refreshInterval: 30_000 }
+  );
+  const creatorEarnedLamports = creatorEarnings?.markets.find((m) => m.marketPubkey === market?.pubkey)?.earnedLamports ?? 0;
+
+  const [creatorCopied, setCreatorCopied] = useState(false);
+  const handleCopyCreator = async () => {
+    if (!market) return;
+    await navigator.clipboard.writeText(market.creator);
+    setCreatorCopied(true);
+    setTimeout(() => setCreatorCopied(false), 1500);
+  };
+
   // Fetch true on-chain state to override any stale/buggy backend indexing
   const { data: onChainCurve, mutate: refreshOnChainCurve } = useSWR(
     program ? `onChainCurve:${mint}` : null,
@@ -150,6 +167,20 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     },
     { refreshInterval: 10_000 }
   );
+
+  // Cost basis comes from the trader's own trade log (average-cost method,
+  // see backend/src/services/analytics/portfolio.ts) -- share count and
+  // price are both live on this page already, so P&L recomputes on every
+  // price tick without waiting on this fetch's own refresh interval.
+  const { data: traderPortfolio } = useSWR(
+    publicKey ? `traderPortfolio:${publicKey.toBase58()}` : null,
+    () => getTraderPortfolio(publicKey!.toBase58()),
+    { refreshInterval: 15_000 }
+  );
+  const myHolding = traderPortfolio?.holdings.find((h) => h.marketPubkey === market?.pubkey);
+  const avgCostSOL = myHolding ? lamportsToSol(myHolding.avgCostLamports) : 0;
+  const unrealizedPnlSOL = myHolding && ownedShares ? ownedShares * (priceSOL - avgCostSOL) : 0;
+  const unrealizedPnlPercent = avgCostSOL > 0 ? ((priceSOL - avgCostSOL) / avgCostSOL) * 100 : 0;
 
   // In SOL mode the input is a spending budget, not a share count -- buy()/sell()
   // only ever take a share count, so this converts at the current spot price as
@@ -289,6 +320,13 @@ export function RealMarketDetail({ mint }: { mint: string }) {
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const priceLineRef = useRef<IPriceLine | null>(null);
+  const positionLineRef = useRef<IPriceLine | null>(null);
+  // Bumped whenever a new chart/series instance is created (chart-creation
+  // effect below) -- lets the candle-data effect tell "this is a fresh
+  // chart, auto-fit it" apart from "this is just a periodic data refresh on
+  // the same chart, leave the user's pan/zoom alone."
+  const chartInstanceIdRef = useRef(0);
+  const lastAutoFitRef = useRef<{ instanceId: number; resolution: CandleResolution } | null>(null);
   const [priceScaleMode, setPriceScaleMode] = useState<"normal" | "log" | "percentage">("normal");
   // Persisted so a page refresh while fullscreen doesn't silently drop back
   // to the normal layout -- sessionStorage rather than state alone since the
@@ -471,6 +509,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
     chartRef.current = chart;
     seriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
+    chartInstanceIdRef.current += 1;
 
     const trendLinePrimitive = new TrendLinePrimitive();
     candleSeries.attachPrimitive(trendLinePrimitive);
@@ -550,6 +589,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       seriesRef.current = null;
       volumeSeriesRef.current = null;
       priceLineRef.current = null;
+      positionLineRef.current = null;
       trendLinePrimitiveRef.current = null;
       overlaySeriesRef.current = [];
       oscillatorSeriesRef.current = [];
@@ -583,27 +623,73 @@ export function RealMarketDetail({ mint }: { mint: string }) {
       title: "",
     });
 
-    // fitContent() alone stretches whatever's loaded to fill the chart width --
-    // with few 1m candles (the new default resolution) that renders each bar
-    // huge/over-zoomed. Padding the visible range out to a minimum bar count
-    // keeps bars a sane width and leaves empty space on the left instead.
-    const MIN_VISIBLE_BARS = 60;
-    if (processedCandles.length < MIN_VISIBLE_BARS) {
-      // Leave breathing room on the right for future candles instead of
-      // pinning the last candle to the right edge.
-      const rightPad = Math.min(10, Math.floor(MIN_VISIBLE_BARS * 0.15));
-      chartRef.current?.timeScale().setVisibleLogicalRange({
-        from: processedCandles.length - (MIN_VISIBLE_BARS - rightPad),
-        to: processedCandles.length - 1 + rightPad,
-      });
-    } else {
-      chartRef.current?.timeScale().fitContent();
+    // Only auto-fit the visible range once per (chart instance, resolution)
+    // -- candles refetch on a timer (see the candles useSWR's
+    // refreshInterval), which changes processedCandles' reference on every
+    // poll even when nothing but the latest bar moved. Re-fitting on every
+    // one of those polls was resetting the user's own pan/zoom every few
+    // seconds. A genuinely new view (first load, fullscreen toggle
+    // recreating the chart, or switching resolution) still gets fit as
+    // before; a routine data refresh on the same chart no longer touches
+    // the viewport at all.
+    const shouldAutoFit =
+      !lastAutoFitRef.current ||
+      lastAutoFitRef.current.instanceId !== chartInstanceIdRef.current ||
+      lastAutoFitRef.current.resolution !== resolution;
+
+    if (shouldAutoFit) {
+      // fitContent() alone stretches whatever's loaded to fill the chart width --
+      // with few 1m candles (the new default resolution) that renders each bar
+      // huge/over-zoomed. Padding the visible range out to a minimum bar count
+      // keeps bars a sane width and leaves empty space on the left instead.
+      const MIN_VISIBLE_BARS = 60;
+      if (processedCandles.length < MIN_VISIBLE_BARS) {
+        // Leave breathing room on the right for future candles instead of
+        // pinning the last candle to the right edge.
+        const rightPad = Math.min(10, Math.floor(MIN_VISIBLE_BARS * 0.15));
+        chartRef.current?.timeScale().setVisibleLogicalRange({
+          from: processedCandles.length - (MIN_VISIBLE_BARS - rightPad),
+          to: processedCandles.length - 1 + rightPad,
+        });
+      } else {
+        chartRef.current?.timeScale().fitContent();
+      }
+      lastAutoFitRef.current = { instanceId: chartInstanceIdRef.current, resolution };
     }
     // isChartFullscreen: the chart/series get recreated on every fullscreen
     // toggle (see the chart-creation effect above), so this needs to rerun
     // and repopulate the fresh series even though processedCandles itself
     // hasn't changed value.
-  }, [processedCandles, isChartFullscreen]);
+  }, [processedCandles, isChartFullscreen, resolution]);
+
+  // XM/MT4-style position marker: a horizontal line at the trader's own
+  // average entry price, colored and labeled by live unrealized P&L, so a
+  // held position is visible directly on the chart as price moves -- not
+  // just in the side panel. Candl tracks one net average-cost position per
+  // trader per market (no per-lot order book), so this is a single line,
+  // not one line per historical buy.
+  useEffect(() => {
+    if (!seriesRef.current) return;
+
+    if (positionLineRef.current) {
+      seriesRef.current.removePriceLine(positionLineRef.current);
+      positionLineRef.current = null;
+    }
+
+    if (!ownedShares || !myHolding || avgCostSOL <= 0) return;
+
+    const isProfit = unrealizedPnlSOL >= 0;
+    const sign = isProfit ? "+" : "";
+
+    positionLineRef.current = seriesRef.current.createPriceLine({
+      price: avgCostSOL,
+      color: isProfit ? "#10b981" : "#f43f5e",
+      lineWidth: 2,
+      lineStyle: LineStyle.Solid,
+      axisLabelVisible: true,
+      title: `${ownedShares}  ${sign}${unrealizedPnlSOL.toFixed(6)} SOL (${sign}${unrealizedPnlPercent.toFixed(2)}%)`,
+    });
+  }, [ownedShares, myHolding, avgCostSOL, unrealizedPnlSOL, unrealizedPnlPercent, isChartFullscreen]);
 
   // Redraws every active indicator from the real candles already loaded.
   // Oscillator panes (RSI/MACD) are torn down and rebuilt in a fixed order
@@ -924,7 +1010,10 @@ export function RealMarketDetail({ mint }: { mint: string }) {
             solPriceUsd !== undefined ? (
               <>
                 <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                  ${(lamportsToSol(stats.athPrice) * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {(() => {
+                    const usd = lamportsToSol(stats.athPrice) * solPriceUsd;
+                    return usd > 0 && usd < 0.01 ? "<$0.01" : `$${usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                  })()}
                 </div>
                 <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500">{lamportsToSol(stats.athPrice).toFixed(6)} SOL</div>
               </>
@@ -947,6 +1036,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
             <p className="text-xs text-slate-300 dark:text-slate-600">Be the first to buy shares below.</p>
           </div>
         )}
+
       </div>
 
       {/* Bottom toolbar: resolution + UTC clock + scale mode */}
@@ -1016,7 +1106,7 @@ export function RealMarketDetail({ mint }: { mint: string }) {
         <div className={`${panel} p-5 flex flex-col ${isChartFullscreen ? "h-full overflow-y-auto" : ""}`}>
             {market.state === "ACTIVE" && !isExpired && (
               <>
-                <div className="flex items-center gap-2 mb-5">
+                <div className="flex items-center gap-2 mb-2">
                   <DollarSign className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                   <span className="font-semibold">Trade Shares</span>
                   {ownedShares ? (
@@ -1029,6 +1119,40 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                     </div>
                   ) : null}
                 </div>
+
+                {!!ownedShares && myHolding && (
+                  <div className="flex items-center justify-between mb-5 px-1">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wide">Unrealized P&amp;L</span>
+                    <div className="text-right">
+                      <div
+                        className={`font-mono text-sm font-bold ${unrealizedPnlSOL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}
+                      >
+                        {solPriceUsd === undefined
+                          ? `${unrealizedPnlSOL >= 0 ? "+" : ""}${unrealizedPnlSOL.toFixed(6)} SOL`
+                          : (() => {
+                              const usd = unrealizedPnlSOL * solPriceUsd;
+                              const abs = Math.abs(usd);
+                              const sign = usd >= 0 ? "+" : "-";
+                              const body =
+                                abs > 0 && abs < 0.01
+                                  ? "<$0.01"
+                                  : `$${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                              return `${sign}${body}`;
+                            })()}
+                        <span className="ml-1.5 opacity-80">
+                          ({unrealizedPnlPercent >= 0 ? "+" : ""}
+                          {unrealizedPnlPercent.toFixed(2)}%)
+                        </span>
+                      </div>
+                      {solPriceUsd !== undefined && (
+                        <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                          {unrealizedPnlSOL >= 0 ? "+" : ""}
+                          {unrealizedPnlSOL.toFixed(6)} SOL
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className={`flex items-center gap-1 p-1 rounded-2xl mb-5 ${inset}`}>
                   <button type="button"
@@ -1141,9 +1265,23 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                       <span className="font-semibold text-sm">
                         {tradeType === "buy" ? "Total Cost" : "You Receive"} {quoting && <Loader2 className="inline w-3 h-3 animate-spin ml-1" />}
                       </span>
-                      <span className={`text-lg font-bold ${tradeType === "buy" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
-                        {estimateSOL > 0 ? estimateSOL.toFixed(6) : "0"} SOL
-                      </span>
+                      <div className="text-right">
+                        <div className={`text-lg font-bold ${tradeType === "buy" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500"}`}>
+                          {solPriceUsd === undefined
+                            ? `${estimateSOL > 0 ? estimateSOL.toFixed(6) : "0"} SOL`
+                            : (() => {
+                                const usd = estimateSOL * solPriceUsd;
+                                return usd > 0 && usd < 0.01
+                                  ? "<$0.01"
+                                  : `$${usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                              })()}
+                        </div>
+                        {solPriceUsd !== undefined && (
+                          <div className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                            {estimateSOL > 0 ? estimateSOL.toFixed(6) : "0"} SOL
+                          </div>
+                        )}
+                      </div>
                     </div>
                     {!quote && shareAmount > 0 && (
                       <p className="text-[11px] text-slate-400 dark:text-slate-500">Estimate from current spot price -- exact cost is confirmed on submit.</p>
@@ -1328,9 +1466,13 @@ export function RealMarketDetail({ mint }: { mint: string }) {
                 <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wide">{label}</div>
                 <div className="text-right">
                   <div className="font-mono text-xs font-semibold">
-                    {solPriceUsd !== undefined ? `$${(sol * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${sol.toFixed(4)} SOL`}
+                    {solPriceUsd === undefined
+                      ? `${sol.toFixed(4)} SOL`
+                      : sol > 0 && sol * solPriceUsd < 0.01
+                        ? "<$0.01"
+                        : `$${(sol * solPriceUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   </div>
-                  {solPriceUsd !== undefined && <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500">{sol.toFixed(4)} SOL</div>}
+                  {solPriceUsd !== undefined && <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500">{sol.toFixed(6)} SOL</div>}
                 </div>
               </div>
             ))}
@@ -1353,9 +1495,44 @@ export function RealMarketDetail({ mint }: { mint: string }) {
             </div>
           )}
 
-          <div className="pt-1">
-            <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1">Creator</div>
-            <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate">{market.creator}</div>
+          <div className="pt-1 space-y-2">
+            <div>
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1">Creator</div>
+              <div className="flex items-center gap-1.5">
+                <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate">{market.creator}</div>
+                <button type="button"
+                  onClick={handleCopyCreator}
+                  aria-label="Copy creator address"
+                  title="Copy creator address"
+                  className="shrink-0 p-1 rounded-md text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-100/50 dark:hover:bg-white/5 transition-colors"
+                >
+                  {creatorCopied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wide">Creator Earnings</div>
+              <div className="text-right">
+                <div className="font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  {creatorEarnings === undefined ? (
+                    <Loader2 className="inline w-3 h-3 animate-spin text-slate-400 dark:text-slate-500" />
+                  ) : solPriceUsd !== undefined ? (
+                    (() => {
+                      const usd = lamportsToSol(creatorEarnedLamports) * solPriceUsd;
+                      return usd > 0 && usd < 0.01 ? "<$0.01" : `$${usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    })()
+                  ) : (
+                    `${lamportsToSol(creatorEarnedLamports).toFixed(6)} SOL`
+                  )}
+                </div>
+                {creatorEarnings !== undefined && solPriceUsd !== undefined && (
+                  <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                    {lamportsToSol(creatorEarnedLamports).toFixed(6)} SOL
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
         )}
