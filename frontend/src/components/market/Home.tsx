@@ -2,11 +2,16 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import useSWR from "swr";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { CandlSimulator } from "./CandlSimulator";
 import { TrendingUp, ArrowRight, Zap, Shield, Users, Briefcase, Rocket, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { nftData } from "@/lib/mockData";
+import { getProtocolStats } from "@/lib/api";
+import { useSolPriceUsd } from "@/lib/solPrice";
+
+const lamportsToSol = (value: number) => (value ? value / 1e9 : 0);
 
 // While the site is pre-launch, this landing page routes every CTA to the
 // waitlist and hides the mock-data marketplace teaser instead of linking into
@@ -18,7 +23,7 @@ const glass =
 const glassHover =
   "hover:bg-white/65 dark:hover:bg-white/[0.08] hover:border-emerald-300/60 dark:hover:border-emerald-500/25 hover:shadow-[0_12px_40px_rgba(16,185,129,0.14)]";
 
-function AnimatedCounter({ end, decimals = 0, prefix = "", suffix = "" }: { end: number, decimals?: number, prefix?: string, suffix?: string }) {
+function AnimatedCounter({ end, decimals = 0, prefix = "", suffix = "", format }: { end: number, decimals?: number, prefix?: string, suffix?: string, format?: (n: number) => string }) {
   const [count, setCount] = useState(0);
   
   useEffect(() => {
@@ -40,7 +45,7 @@ function AnimatedCounter({ end, decimals = 0, prefix = "", suffix = "" }: { end:
     window.requestAnimationFrame(step);
   }, [end]);
   
-  return <>{prefix}{count.toFixed(decimals)}{suffix}</>;
+  return <>{prefix}{format ? format(count) : count.toFixed(decimals)}{suffix}</>;
 }
 
 function Typewriter({ words }: { words: string[] }) {
@@ -99,6 +104,21 @@ export function Home() {
       setWalletModalVisible(true);
     }
   };
+
+  // Real protocol stats for the hero counters. The section below only
+  // renders once there's genuine on-chain activity to report -- no data,
+  // an unreachable API, or an all-zero response keeps it hidden rather
+  // than showing fabricated numbers (see commit d5703bc for why).
+  const { data: protocolStats } = useSWR("protocol-stats", getProtocolStats, {
+    refreshInterval: 60_000,
+    revalidateOnFocus: false,
+  });
+  const solPriceUsd = useSolPriceUsd();
+  const hasProtocolActivity =
+    !!protocolStats && protocolStats.totalMarkets > 0 && protocolStats.totalVolume > 0;
+  const volumeSol = protocolStats ? lamportsToSol(protocolStats.totalVolume) : 0;
+  const compact = (n: number) =>
+    n.toLocaleString(undefined, { notation: "compact", maximumFractionDigits: 1 });
 
   return (
     <div className="pb-24 md:pb-0 text-slate-800 dark:text-slate-100">
@@ -189,18 +209,34 @@ export function Home() {
             </a>
           </div>
 
-          {/* Stats: pre-launch has no real trading volume/traders/listings yet
-              to report, so this section is skipped entirely rather than
-              showing placeholder numbers as if they were real (matches how
-              the marketplace page dropped its mock "Demo Markets" section
-              for the same reason). Reinstate once backed by real protocol
-              stats -- see backend/src/services/analytics/protocol-stats.ts. */}
-          {!WAITLIST_MODE && (
+          {/* Stats: driven entirely by real protocol data from the indexer
+              (backend/src/services/analytics/protocol-stats.ts). Hidden until
+              there's actual on-chain activity so the landing page never shows
+              fabricated numbers -- matches how the marketplace page dropped
+              its mock "Demo Markets" section. */}
+          {!WAITLIST_MODE && hasProtocolActivity && protocolStats && (
             <div className={`grid grid-cols-3 gap-px mt-14 rounded-2xl overflow-hidden ${glass}`}>
               {[
-                { value: <AnimatedCounter end={2.4} decimals={1} prefix="$" suffix="M+" />, label: "Trading Volume", color: "text-emerald-500 dark:text-emerald-400" },
-                { value: <AnimatedCounter end={12} suffix="K+" />, label: "Active Traders", color: "text-amber-500 dark:text-amber-400" },
-                { value: <AnimatedCounter end={500} suffix="+" />, label: "Listed NFTs", color: "text-sky-500 dark:text-sky-400" },
+                {
+                  value:
+                    solPriceUsd !== undefined ? (
+                      <AnimatedCounter end={volumeSol * solPriceUsd} prefix="$" format={compact} />
+                    ) : (
+                      <AnimatedCounter end={volumeSol} suffix=" SOL" format={compact} />
+                    ),
+                  label: "Trading Volume",
+                  color: "text-emerald-500 dark:text-emerald-400",
+                },
+                {
+                  value: <AnimatedCounter end={protocolStats.totalUniqueTraders} format={compact} />,
+                  label: protocolStats.totalUniqueTraders === 1 ? "Trader" : "Traders",
+                  color: "text-amber-500 dark:text-amber-400",
+                },
+                {
+                  value: <AnimatedCounter end={protocolStats.totalMarkets} format={compact} />,
+                  label: protocolStats.totalMarkets === 1 ? "Market" : "Markets",
+                  color: "text-sky-500 dark:text-sky-400",
+                },
               ].map(({ value, label, color }) => (
                 <div key={label} className="py-6 px-4 bg-white/30 dark:bg-white/[0.03]">
                   <div className={`text-3xl font-bold ${color}`}>{value}</div>
