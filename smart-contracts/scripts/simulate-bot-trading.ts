@@ -21,6 +21,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const DURATION_MINUTES = Number(process.argv[2] ?? 10);
 const BOTS_PER_MARKET = Number(process.argv[3] ?? 4);
 const SPEED_MULTIPLIER = Number(process.argv[4] ?? 1);
+// Case-insensitive substring match against the market's NFT name -- omit to trade every ACTIVE market, as before.
+const MARKET_NAME_FILTER = process.argv[5]?.toLowerCase();
 const FUND_LAMPORTS = 60_000_000; // 0.06 SOL/bot -- enough headroom for several buys/sells over the run
 const MIN_DELAY_MS = 2000;
 const MAX_DELAY_MS = 9000;
@@ -125,9 +127,16 @@ async function main() {
   const authorityProvider = new AnchorProvider(connection, new Wallet(authority), { commitment: "confirmed" });
   const authorityProgram = new Program(idl, authorityProvider);
 
-  const activeMarkets = await fetchActiveMarkets();
+  const allActiveMarkets = await fetchActiveMarkets();
+  const activeMarkets = MARKET_NAME_FILTER
+    ? allActiveMarkets.filter((m) => m.name.toLowerCase().includes(MARKET_NAME_FILTER))
+    : allActiveMarkets;
   if (activeMarkets.length === 0) {
-    console.log("No ACTIVE markets found -- nothing to simulate.");
+    console.log(
+      MARKET_NAME_FILTER
+        ? `No ACTIVE market matching "${MARKET_NAME_FILTER}" found -- nothing to simulate.`
+        : "No ACTIVE markets found -- nothing to simulate."
+    );
     return;
   }
   console.log(`Found ${activeMarkets.length} active market(s): ${activeMarkets.map((m) => m.name).join(", ")}`);
