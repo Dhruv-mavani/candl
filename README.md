@@ -1,4 +1,4 @@
-# Candll
+# Candl
 
 **Candl is a decentralized market protocol on Solana that enables continuous price discovery and instant liquidity for unique digital assets using bonding curves.**
 
